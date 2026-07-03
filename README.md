@@ -32,6 +32,7 @@ CanaryProbe 是一个**诱饵探针（honeytoken tripwire）**：你在闭源 co
 - [快速开始](#快速开始)
 - [用法](#用法)
 - [演示](#演示)
+- [对比 Thinkst Canarytokens](#对比-thinkst-canarytokens)
 - [配置](#配置)
 - [付费版本](#付费版本)
 - [路线图](#路线图)
@@ -43,7 +44,7 @@ CanaryProbe 是一个**诱饵探针（honeytoken tripwire）**：你在闭源 co
 
 <img src="https://api.iconify.design/tabler:shield-lock.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> **为什么需要它**
 
-信创 / 等保 2.0 的 air-gap 部署里，越来越多团队把闭源 coding agent 对接到本地 Qwen / GLM / DeepSeek 端点（`ANTHROPIC_BASE_URL=http://localhost:...`）。合规要求「数据不出境」必须被**证明**，而不是被假设——可你读不到那个二进制的源码。今天要发现它有没有偷偷外联，唯一的办法是**逐版本反编译**：r/LocalLLaMA 那次 XOR-91 拆解，就是把一份主机名黑名单 Base64 解码、再用密钥 91 异或解密，才发现它指向了一批中国公司的域名。
+信创 / 等保 2.0 的 air-gap 部署里，越来越多团队把闭源 coding agent 对接到本地 Qwen / GLM / DeepSeek 端点（`ANTHROPIC_BASE_URL=http://localhost:...`）——正是 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 那批跑本地模型的人所用的部署方式。合规要求「数据不出境」必须被**证明**，而不是被假设——可你读不到那个二进制的源码。今天要发现它有没有偷偷外联，唯一的办法是**逐版本反编译**：r/LocalLLaMA 那次 XOR-91 拆解，就是把一份主机名黑名单 Base64 解码、再用密钥 91 异或解密，才发现它指向了一批中国公司的域名。
 
 CanaryProbe 把这件事翻过来：**与其反编译，不如设陷阱。** 诱饵是没有任何合法路径会触碰的值，所以「二进制碰了诱饵」这个事件本身就是**意图外联**的确凿信号——这正是它区别于「出口白名单」的地方：白名单记录*流量*、回答「这个主机允不允许」；CanaryProbe 回答「它探测了一个它本不该知道的主机吗」。
 
@@ -147,6 +148,21 @@ canaryprobe watch --duration 60       # 观测 60 秒后停止
 <img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> **演示**
 
 ![demo](assets/demo.gif)
+
+## 对比 Thinkst Canarytokens
+
+<img src="https://api.iconify.design/tabler:git-compare.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> **对比 [Thinkst Canarytokens](https://github.com/thinkst/canarytokens)**
+
+Canarytokens 是成熟的 honeytoken 原语——在诱饵**形态数量**和托管便利性上都强于 CanaryProbe。CanaryProbe 刻意做窄：它盯的是 air-gap 边界内那个**读不到源码的闭源 coding agent 二进制**。
+
+| | CanaryProbe | Thinkst Canarytokens |
+| --- | --- | --- |
+| 目标面 | 读不到源码的闭源 coding agent 二进制 | 通用入侵诱饵（文档、DNS、URL） |
+| 运行期外联传感器（权威 DNS + TCP） | ✓ | 部分（仅 DNS token） |
+| 记录 agent 试图带上的假凭证 | ✓ | — |
+| 完全 air-gap，不回调任何云 | ✓ | —（token 通常要 beacon 回托管服务器） |
+| 供合规使用的本地签名审计文件 | ✓ | 部分 |
+| 诱饵形态广度 | —（v0.1 仅主机名 + 凭证） | ✓（数十种） |
 
 ## 配置
 
