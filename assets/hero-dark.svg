@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+     role="img" aria-label="CanaryProbe — a honeytoken tripwire for a coding-agent binary you can't read">
+  <defs>
+    <linearGradient id="hg-d" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF6B6B"/>
+      <stop offset="1" stop-color="#FFC15E"/>
+    </linearGradient>
+    <marker id="hah-d" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+      <path d="M0,0 L6.5,3 L0,6 Z" fill="#FF6B6B"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="880" height="300" fill="#1D1D1F"/>
+
+  <!-- brand mark -->
+  <g transform="translate(96,150)">
+    <circle cx="0" cy="0" r="52" fill="#FF6B6B" fill-opacity="0.12" stroke="#FF6B6B" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="34" fill="#FFC15E" fill-opacity="0.16" stroke="#FFC15E" stroke-width="1.5"/>
+    <path d="M-13,6 Q-16,-14 2,-16 Q20,-16 18,4 Q16,18 -2,18 Q-12,18 -13,6 Z"
+          fill="url(#hg-d)"/>
+    <circle cx="7" cy="-6" r="3" fill="#1D1D1F"/>
+    <path d="M18,-2 L30,-6 L18,4 Z" fill="#FFC15E"/>
+    <path d="M-13,10 L-26,16" stroke="#FF6B6B" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="188" y="132" font-size="52" font-weight="700" fill="#F5F5F7" letter-spacing="-0.5">CanaryProbe</text>
+  <text x="190" y="170" font-size="21" font-weight="600" fill="#FF6B6B">诱饵探针 · a tripwire for a binary you can't read</text>
+
+  <!-- one-line desc -->
+  <text x="190" y="206" font-size="16" font-weight="500" fill="#A1A1A8">Plant a decoy. Arm the sensors. Catch a coding agent probing a host</text>
+  <text x="190" y="230" font-size="16" font-weight="500" fill="#A1A1A8">it had no business knowing — as a checkable event, not a decompile.</text>
+
+  <!-- mini flow strip -->
+  <g stroke="#3A3A44" stroke-width="1.5" fill="none">
+    <line x1="272" y1="264" x2="322" y2="264" marker-end="url(#hah-d)"/>
+    <line x1="430" y1="264" x2="480" y2="264" marker-end="url(#hah-d)"/>
+    <line x1="600" y1="264" x2="650" y2="264" marker-end="url(#hah-d)"/>
+  </g>
+  <text x="230" y="268" font-size="12.5" font-weight="600" fill="#2DC79A">init</text>
+  <text x="352" y="268" font-size="12.5" font-weight="600" fill="#8985FF">watch</text>
+  <text x="503" y="268" font-size="12.5" font-weight="700" fill="#FF6B6B">TRIPPED</text>
+  <text x="668" y="268" font-size="12.5" font-weight="600" fill="#4DA3FF">report</text>
+</svg>

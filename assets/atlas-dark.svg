@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+     role="img" aria-label="Architecture: init plants decoys; watch runs DNS + TCP sensors into alarm and audit.jsonl; report reads the audit log into report.md">
+  <defs>
+    <marker id="ah-d" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#5A5A66"/>
+    </marker>
+    <marker id="at-d" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#FF6B6B"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="880" height="360" fill="#1D1D1F"/>
+
+  <!-- lane labels -->
+  <text x="34" y="40" font-size="13" font-weight="700" fill="#A1A1A8">canaryprobe init</text>
+  <text x="34" y="150" font-size="13" font-weight="700" fill="#A1A1A8">canaryprobe watch  (one process, two sensor threads)</text>
+  <text x="34" y="300" font-size="13" font-weight="700" fill="#A1A1A8">canaryprobe report</text>
+
+  <!-- connectors -->
+  <g stroke="#3A3A44" stroke-width="1.5" fill="none">
+    <line x1="196" y1="72" x2="300" y2="72" marker-end="url(#ah-d)"/>
+    <line x1="370" y1="98" x2="370" y2="168" marker-end="url(#ah-d)"/>
+    <line x1="196" y1="200" x2="300" y2="188" marker-end="url(#at-d)" stroke="#FF6B6B"/>
+    <line x1="196" y1="212" x2="300" y2="240" marker-end="url(#at-d)" stroke="#FF6B6B"/>
+    <line x1="470" y1="188" x2="600" y2="200" marker-end="url(#ah-d)"/>
+    <line x1="470" y1="240" x2="600" y2="216" marker-end="url(#ah-d)"/>
+    <line x1="690" y1="248" x2="690" y2="300" marker-end="url(#ah-d)"/>
+    <line x1="630" y1="320" x2="470" y2="320" marker-end="url(#ah-d)"/>
+    <line x1="300" y1="320" x2="210" y2="320" marker-end="url(#ah-d)"/>
+  </g>
+
+  <!-- INIT lane -->
+  <g>
+    <rect x="34" y="48" width="162" height="48" rx="14" fill="#4DA3FF" fill-opacity="0.16" stroke="#4DA3FF" stroke-width="1.5"/>
+    <text x="115" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#9BCBFF">init / plant</text>
+    <text x="115" y="88" text-anchor="middle" font-size="10.5" fill="#A1A1A8">decoy.py · mint decoys</text>
+
+    <rect x="300" y="48" width="150" height="48" rx="14" fill="#FFC15E" fill-opacity="0.16" stroke="#FFC15E" stroke-width="1.5"/>
+    <text x="375" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FFD89A">decoys.json</text>
+    <text x="375" y="86" text-anchor="middle" font-size="10.5" fill="#A1A1A8">+ signed manifest</text>
+  </g>
+
+  <!-- WATCH lane -->
+  <g>
+    <rect x="34" y="176" width="162" height="60" rx="14" fill="#A1A1A8" fill-opacity="0.12" stroke="#A1A1A8" stroke-width="1.5"/>
+    <text x="115" y="200" text-anchor="middle" font-size="12.5" font-weight="600" fill="#D6D6DB">closed coding agent</text>
+    <text x="115" y="218" text-anchor="middle" font-size="10.5" fill="#A1A1A8">binary you can't read</text>
+    <text x="115" y="232" text-anchor="middle" font-size="9.5" fill="#FF6B6B">resolves / connects a decoy</text>
+
+    <rect x="300" y="164" width="170" height="44" rx="14" fill="#8985FF" fill-opacity="0.16" stroke="#8985FF" stroke-width="1.5"/>
+    <text x="385" y="182" text-anchor="middle" font-size="12" font-weight="600" fill="#BBB8FF">sensor_dns.py</text>
+    <text x="385" y="198" text-anchor="middle" font-size="10" fill="#A1A1A8">authoritative DNS · catch resolve</text>
+
+    <rect x="300" y="220" width="170" height="44" rx="14" fill="#8985FF" fill-opacity="0.16" stroke="#8985FF" stroke-width="1.5"/>
+    <text x="385" y="238" text-anchor="middle" font-size="12" font-weight="600" fill="#BBB8FF">sensor_conn.py</text>
+    <text x="385" y="254" text-anchor="middle" font-size="10" fill="#A1A1A8">TCP listener · catch connect</text>
+
+    <rect x="600" y="182" width="90" height="52" rx="14" fill="#FF6B6B" fill-opacity="0.16" stroke="#FF6B6B" stroke-width="1.5"/>
+    <text x="645" y="205" text-anchor="middle" font-size="12.5" font-weight="700" fill="#FFA1A1">alarm.py</text>
+    <text x="645" y="221" text-anchor="middle" font-size="10" fill="#A1A1A8">TRIPPED</text>
+  </g>
+
+  <!-- audit + report -->
+  <g>
+    <rect x="630" y="300" width="130" height="42" rx="14" fill="#2DC79A" fill-opacity="0.16" stroke="#2DC79A" stroke-width="1.5"/>
+    <text x="695" y="320" text-anchor="middle" font-size="12" font-weight="600" fill="#7FE3C6">audit.jsonl</text>
+    <text x="695" y="335" text-anchor="middle" font-size="9.5" fill="#A1A1A8">TripEvent · append-only</text>
+
+    <rect x="300" y="300" width="130" height="42" rx="14" fill="#4DA3FF" fill-opacity="0.16" stroke="#4DA3FF" stroke-width="1.5"/>
+    <text x="365" y="320" text-anchor="middle" font-size="12" font-weight="600" fill="#9BCBFF">report.py</text>
+    <text x="365" y="335" text-anchor="middle" font-size="9.5" fill="#A1A1A8">read audit log</text>
+
+    <rect x="60" y="300" width="150" height="42" rx="14" fill="#FFC15E" fill-opacity="0.16" stroke="#FFC15E" stroke-width="1.5"/>
+    <text x="135" y="320" text-anchor="middle" font-size="12" font-weight="600" fill="#FFD89A">report.md</text>
+    <text x="135" y="335" text-anchor="middle" font-size="9.5" fill="#A1A1A8">signed clean / TRIPPED</text>
+  </g>
+</svg>

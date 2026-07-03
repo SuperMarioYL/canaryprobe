@@ -1,0 +1,57 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build / distribution artifacts
+build/
+dist/
+wheels/
+*.whl
+*.tar.gz
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Runtime output written by the tool (decoy manifests, audit logs, reports)
+decoys.json
+decoys.manifest.json
+manifest.json
+audit.jsonl
+report.md
+deployment.yaml
+# Per-deployment signing secret — MUST NOT be committed
+.canaryprobe.key
+*.local.yaml
+
+# Editor / OS cruft
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Local agent config — never commit
+CLAUDE.md
+.claude/
+
+# build scratch
+PUBLISH_BLOCKED.md
+BUILD_SETUP_NEXT_STEPS.md
+DRIFT_REPORT.md
+GIT_AUTHOR_DRIFT.md
+.spawn.*
+.builder_*
+.build_metadata*
+.stage_*
+DRIFT*
+*_BLOCKED.md
