@@ -11,7 +11,7 @@
 <p align="center"><sub>给你读不到源码的闭源 <b>coding agent</b> 埋诱饵主机名和假凭证，一旦二进制去解析或连接它，就在运行期即时告警并留下审计证据。</sub></p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="https://github.com/SuperMarioYL/canaryprobe/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/canaryprobe" alt="Latest release"></a>
   <a href="https://github.com/SuperMarioYL/canaryprobe/actions/workflows/ci.yml"><img src="https://github.com/SuperMarioYL/canaryprobe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB.svg" alt="Python 3.12+">
