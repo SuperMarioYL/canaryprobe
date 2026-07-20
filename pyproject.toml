@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A honeytoken tripwire that catches a closed-source coding agent probing planted decoys — turns \"did it exfiltrate?\" into a checkable yes/no event."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "SuperMarioYL" }]
 keywords = [
     "coding-agent",
@@ -25,7 +25,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3.12",
