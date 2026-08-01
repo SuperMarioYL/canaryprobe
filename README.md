@@ -208,7 +208,7 @@ Canarytokens 是成熟的 honeytoken 原语——在诱饵**形态数量**和托
 
 <img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> **许可证**
 
-MIT 许可证，详见 [LICENSE](./LICENSE)。欢迎通过 [issue](https://github.com/SuperMarioYL/canaryprobe/issues) 反馈问题或提交 PR。
+Apache-2.0 许可证，详见 [LICENSE](./LICENSE)。欢迎通过 [issue](https://github.com/SuperMarioYL/canaryprobe/issues) 反馈问题或提交 PR。
 
 ## Share this
 
@@ -219,4 +219,4 @@ alarm + a signed audit line — a checkable event, not a decompile.
 https://github.com/SuperMarioYL/canaryprobe
 ```
 
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+<p align="center"><sub><a href="./LICENSE">Apache-2.0</a> © 2026 SuperMarioYL</sub></p>

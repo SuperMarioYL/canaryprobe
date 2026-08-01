@@ -11,7 +11,7 @@
 <p align="center"><sub>Plant decoy hostnames and fake credentials in the reach of a closed-source <b>coding agent</b>; the instant that binary resolves or connects one, alarm at runtime and leave an audit trail.</sub></p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="https://github.com/SuperMarioYL/canaryprobe/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/canaryprobe" alt="Latest release"></a>
   <a href="https://github.com/SuperMarioYL/canaryprobe/actions/workflows/ci.yml"><img src="https://github.com/SuperMarioYL/canaryprobe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB.svg" alt="Python 3.12+">
@@ -208,7 +208,7 @@ The `report` artifact *is* the thing a compliance team buys. Buyers are air-gapp
 
 <img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> **License**
 
-MIT — see [LICENSE](./LICENSE). File a bug via an [issue](https://github.com/SuperMarioYL/canaryprobe/issues) or open a PR.
+Apache-2.0 — see [LICENSE](./LICENSE). File a bug via an [issue](https://github.com/SuperMarioYL/canaryprobe/issues) or open a PR.
 
 ## Share this
 
@@ -219,4 +219,4 @@ alarm + a signed audit line — a checkable event, not a decompile.
 https://github.com/SuperMarioYL/canaryprobe
 ```
 
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+<p align="center"><sub><a href="./LICENSE">Apache-2.0</a> © 2026 SuperMarioYL</sub></p>

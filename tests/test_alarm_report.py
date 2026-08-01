@@ -164,3 +164,37 @@ def test_report_window_start_is_earliest_event(tmp_path):
     _seed_events(cfg, n=3)
     result = build_report(cfg)
     assert result.window_start == datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_report_signature_is_deterministic_over_same_evidence(tmp_path):
+    """Two runs over the SAME audit log produce the SAME signature.
+
+    The volatile generation timestamp must live OUTSIDE the signed body so an
+    auditor can reproduce the signature over identical evidence (the guarantee
+    the module docstring documents).
+    """
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    _seed_events(cfg, n=2)
+    r1 = build_report(cfg)
+    r2 = build_report(cfg)
+    assert r1.signature == r2.signature
+    assert r1.signature  # non-empty
+    # the markdown may carry a different generated-at footer, but the signature
+    # (over the body only) is stable.
+    assert verify_report(r1.markdown, cfg.signing_key()) is True
+    assert verify_report(r2.markdown, cfg.signing_key()) is True
+
+
+def test_report_generated_at_is_present_but_unsigned(tmp_path):
+    """The generation timestamp is shown in the report but excluded from the
+    signed body — editing only the generated-at footer must NOT break the
+    signature."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    _seed_events(cfg, n=1)
+    result = build_report(cfg)
+    assert "Generated at:" in result.markdown
+    # mutate the generated-at footer only
+    tampered_footer = result.markdown.replace("Generated at:", "Generated-at:", 1)
+    assert verify_report(tampered_footer, cfg.signing_key()) is True

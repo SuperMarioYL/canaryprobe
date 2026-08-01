@@ -136,6 +136,32 @@ def test_credential_decoy_shapes():
     assert api.value.startswith("cnp_")
     assert generate_credential_decoy("db_password").kind is DecoyKind.CREDENTIAL
     assert generate_credential_decoy("ssh_private_key_id").value.startswith("SHA256:")
+    # v0.2 — broader bait surface
+    imds = generate_credential_decoy("cloud_metadata_url")
+    assert imds.kind is DecoyKind.CREDENTIAL
+    assert "169.254.169.254" in imds.value
+    assert imds.value.startswith("http://")
+    pkg = generate_credential_decoy("package_index_token")
+    assert pkg.kind is DecoyKind.CREDENTIAL
+    assert pkg.value.startswith("npm_")
+
+
+def test_new_credential_kinds_are_random_unique():
+    a = generate_credential_decoy("cloud_metadata_url")
+    b = generate_credential_decoy("cloud_metadata_url")
+    assert a.value != b.value
+    c = generate_credential_decoy("package_index_token")
+    d = generate_credential_decoy("package_index_token")
+    assert c.value != d.value
+
+
+def test_cred_env_name_maps_new_kinds():
+    from canaryprobe.decoy import _cred_env_name
+
+    assert _cred_env_name(generate_credential_decoy("cloud_metadata_url")) == "CLOUD_METADATA_URL"
+    assert _cred_env_name(generate_credential_decoy("package_index_token")) == "PACKAGE_INDEX_TOKEN"
+    # existing mappings unchanged
+    assert _cred_env_name(generate_credential_decoy("aws_access_key")) == "AWS_ACCESS_KEY_ID"
 
 
 def test_unknown_credential_kind_raises():
@@ -285,3 +311,25 @@ def test_injection_instructions_uses_env_exports_for_creds():
     decoys = [generate_credential_decoy("aws_access_key")]
     text = injection_instructions(decoys, cfg)
     assert "export AWS_ACCESS_KEY_ID=" in text
+
+
+def test_injection_instructions_names_resolver_path_and_warns_etc_hosts(tmp_path):
+    """The DNS trip path must actually fire: the zone's resolver is pointed at
+    the DNS sensor (a resolve IS a DNS query), and the operator is explicitly
+    warned that a bare /etc/hosts entry does NOT trip the DNS sensor.  The
+    connect-bait carries the conn sensor's port so a connect lands on the bind.
+    """
+    cfg = DeploymentConfig.default(tmp_path)
+    decoys = generate_decoys("corp.local", hostnames=1, credentials=0)
+    text = injection_instructions(decoys, cfg)
+
+    # the DNS sensor host:port is named as the resolver target for the zone
+    assert f"{cfg.dns_sensor.host}:{cfg.dns_sensor.port}" in text
+    assert "resolver" in text.lower()
+    # explicit /etc/hosts warning that it will not trip the DNS sensor
+    assert "/etc/hosts" in text
+    low = text.lower()
+    assert "will not trip" in low or "does not trip" in low or "no dns query" in low
+    # connect-bait carries the conn sensor's port
+    assert f":{cfg.conn_sensor.port}" in text
+    assert "http://" in text

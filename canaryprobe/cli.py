@@ -35,9 +35,10 @@ from .decoy import (
     generate_decoys,
     injection_instructions,
     load_decoys,
+    load_manifest,
     write_decoys,
 )
-from .report import write_report
+from .report import verify_report, write_report
 from .sensor_conn import ConnSensor
 from .sensor_dns import DnsSensor
 
@@ -257,6 +258,66 @@ def report(
             f"Evidence: {path}"
         )
     _out.print(f"[dim]signature {result.signature[:16]}…[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# verify (audit loop — recompute the report + manifest signatures)
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def verify(
+    directory: Path = typer.Option(
+        Path.cwd, "--dir", "-d", help="Deployment directory (holds the signing key)."
+    ),
+    report_path: Optional[Path] = typer.Option(
+        None,
+        "--report",
+        "-r",
+        help="Path to a report.md to verify (default: <dir>/report.md).",
+    ),
+) -> None:
+    """Verify a report's signature and the decoy manifest signature (audit loop).
+
+    Recomputes the report's HMAC-SHA256 over the signed body and (when a manifest
+    is present) the manifest signature, printing VERIFIED or TAMPERED. Exits
+    non-zero on a tamper or a missing report — the check an auditor runs to
+    confirm the evidence was produced by this deployment and not edited.
+    """
+
+    cfg = load_or_default(Path(directory))
+    target = Path(report_path) if report_path is not None else (cfg.base_dir / "report.md")
+    if not target.is_file():
+        _err.print(f"[red]report not found:[/red] {target}")
+        _err.print("Run [bold]canaryprobe report[/bold] first.")
+        raise typer.Exit(code=2)
+
+    markdown = target.read_text(encoding="utf-8")
+    key = cfg.signing_key()
+    report_ok = verify_report(markdown, key)
+
+    manifest = load_manifest(cfg)
+    manifest_state = "absent"
+    if manifest is not None:
+        manifest_state = "verified" if manifest.verify(key) else "TAMPERED"
+
+    manifest_ok = manifest_state != "TAMPERED"
+    if report_ok and manifest_ok:
+        _out.print(
+            f"[bold green]VERIFIED[/bold green] — report signature matches the "
+            f"deployment key."
+        )
+        if manifest is not None:
+            _out.print(f"[green]manifest[/green] {manifest_state}")
+        _out.print(f"[dim]{target}[/dim]")
+    else:
+        if not report_ok:
+            _out.print(
+                "[bold red]TAMPERED[/bold red] — the report body does not match its signature."
+            )
+        if manifest_state == "TAMPERED":
+            _out.print("[red]manifest[/red] TAMPERED — the decoy set was edited.")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------

@@ -55,6 +55,8 @@ _CRED_KINDS: tuple[str, ...] = (
     "api_token",
     "db_password",
     "ssh_private_key_id",
+    "cloud_metadata_url",
+    "package_index_token",
 )
 
 _ALNUM = string.ascii_letters + string.digits
@@ -210,6 +212,16 @@ def generate_credential_decoy(kind: str | None = None) -> Decoy:
     elif cred_kind == "ssh_private_key_id":
         value = "SHA256:" + _rand(_ALNUM + "+/", 43)
         label = "SSH key fingerprint (fake)"
+    elif cred_kind == "cloud_metadata_url":
+        # An IMDS-style URL bait a cloud-native agent may fetch. 169.254.169.254 is
+        # the link-local metadata endpoint; a fake role name keeps two inits distinct.
+        role = "canaryprobe-role-" + _rand(string.ascii_lowercase + string.digits, 6)
+        value = f"http://169.254.169.254/latest/meta-data/iam/security-credentials/{role}"
+        label = "Cloud IMDS URL (fake)"
+    elif cred_kind == "package_index_token":
+        # An npm/pypi-style registry token an agent may try to publish or install with.
+        value = "npm_" + _rand(_ALNUM, 36)
+        label = "Package-index token (fake)"
     else:
         raise ValueError(f"unknown credential kind: {cred_kind!r}")
     return Decoy(id=_short_id(), kind=DecoyKind.CREDENTIAL, value=value, label=label)
@@ -314,18 +326,30 @@ def injection_instructions(decoys: list[Decoy], config: DeploymentConfig) -> str
     lines.append("")
 
     if hosts:
-        lines.append("  Decoy hostnames (a resolve or connect trips the alarm):")
+        lines.append("  Decoy hostnames (a RESOLVE via the DNS sensor, or a CONNECT to the")
+        lines.append("  conn sensor's bind, trips the alarm):")
         for d in hosts:
             lines.append(f"    - {d.value}   [{d.id}]")
         lines.append("")
         primary = hosts[0].value
-        lines.append("  Make the agent host resolve the decoy zone to the DNS sensor.")
-        lines.append("  Simplest: add a line to /etc/hosts on the agent box:")
-        lines.append(f"      127.0.0.1   {primary}")
-        lines.append("  Or point the resolver for the zone at the sensor:")
-        lines.append(
-            f"      dns zone '{config.decoy_zone}' -> {config.dns_sensor.host}:{config.dns_sensor.port}"
-        )
+        lines.append("  To trip on a RESOLVE, the agent host must send its DNS query for the")
+        lines.append(f"  decoy zone '{config.decoy_zone}' to the DNS sensor — point the zone's")
+        lines.append(f"  resolver at {config.dns_sensor.host}:{config.dns_sensor.port}:")
+        lines.append("    (a stub resolver / resolv.conf nameserver + a zone forward to the")
+        lines.append("     sensor; the sensor is authoritative ONLY for the decoy zone, so a")
+        lines.append("     resolve of any name under it is a trip.)")
+        lines.append("")
+        lines.append("  NOTE: a bare /etc/hosts entry ('127.0.0.1   " + primary + "') is")
+        lines.append("  resolved by libc and sends NO DNS query, so it will NOT trip the DNS")
+        lines.append("  sensor on its own — use it only to steer a CONNECT to the conn sensor")
+        lines.append("  below, or rely on the resolver path above for the DNS trip.")
+        lines.append("")
+        lines.append("  To trip on a CONNECT, plant the decoy as a URL that dials the conn")
+        lines.append(f"  sensor's bind ({config.conn_sensor.host}:{config.conn_sensor.port}):")
+        lines.append(f"      http://{primary}:{config.conn_sensor.port}/   [{hosts[0].id}]")
+        lines.append("    (an agent that fetches this URL may resolve the host via the DNS")
+        lines.append("     sensor above AND connect to the conn sensor's bind — both alarms")
+        lines.append("     can fire from a single probe.)")
         lines.append("")
 
     if creds:
@@ -350,6 +374,10 @@ def _cred_env_name(decoy: Decoy) -> str:
         return "DB_PASSWORD"
     if "ssh" in label:
         return "SSH_KEY_FINGERPRINT"
+    if "imds" in label or "cloud" in label or "metadata" in label:
+        return "CLOUD_METADATA_URL"
+    if "package" in label or "npm" in label or "registry" in label:
+        return "PACKAGE_INDEX_TOKEN"
     return "INTERNAL_SECRET"
 
 

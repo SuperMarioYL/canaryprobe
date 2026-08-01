@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "canaryprobe"
-version = "0.1.0"
+version = "0.2.0"
 description = "A honeytoken tripwire that catches a closed-source coding agent probing planted decoys — turns \"did it exfiltrate?\" into a checkable yes/no event."
 readme = "README.md"
 requires-python = ">=3.12"

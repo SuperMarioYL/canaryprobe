@@ -161,7 +161,15 @@ class DnsSensor:
             self._started.clear()
 
     def is_running(self) -> bool:
-        return self._server is not None and self._server.isAlive()
+        # dnslib's DNSServer exposed the thread-alive check as isAlive() (the
+        # deprecated threading alias) in older builds and is_alive() in newer
+        # ones — probe for both so this stays robust across versions.
+        if self._server is None:
+            return False
+        alive = getattr(self._server, "is_alive", None) or getattr(
+            self._server, "isAlive", None
+        )
+        return bool(alive()) if callable(alive) else False
 
 
 __all__ = [

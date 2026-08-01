@@ -91,7 +91,17 @@ def build_report(
     body = _render_body(config, events, result, manifest)
     signature = _sign(config.signing_key(), body)
     result.signature = signature
-    result.markdown = body + f"\n{_SIG_MARKER}`{signature}`\n"
+    # The signature is over the evidence BODY only.  The generation timestamp is
+    # volatile report-metadata, so it is rendered AFTER the signature line as an
+    # unsigned footer — two runs over the same audit log then yield the same
+    # signature, which is the auditor-reproducibility guarantee this module
+    # documents.  verify_report recomputes the hash over the body (everything
+    # before the signature line) and ignores this unsigned footer.
+    result.markdown = (
+        body
+        + f"\n{_SIG_MARKER}`{signature}`\n"
+        + f"\nGenerated at: `{_iso(result.window_end)}`\n"
+    )
     return result
 
 
@@ -110,7 +120,6 @@ def _render_body(
     lines.append("| Field | Value |")
     lines.append("| --- | --- |")
     lines.append(f"| Decoy zone | `{config.decoy_zone}` |")
-    lines.append(f"| Generated at | `{_iso(result.window_end)}` |")
     if result.window_start is not None:
         lines.append(f"| Window start | `{_iso(result.window_start)}` |")
     lines.append(f"| Trip events | {result.event_count} |")
@@ -202,8 +211,11 @@ def verify_report(markdown: str, signing_key: str) -> bool:
     # ``build_report`` then appends ``"\n" + marker + sig``. So the body is
     # everything up to (and including) the newline before the extra separator.
     body = markdown[:idx]
-    sig_line = markdown[idx + len(marker) :].strip()
-    embedded = sig_line.strip("`").strip()
+    # The signature is the (backtick-wrapped) hex token on the signature line.
+    # Anything after that line — e.g. the unsigned "Generated at" footer — is
+    # ignored so it can never corrupt the extracted token.
+    first_line = markdown[idx + len(marker):].split("\n", 1)[0].strip()
+    embedded = first_line.strip("`").strip()
     expected = _sign(signing_key, body)
     return hmac.compare_digest(expected, embedded)
 
