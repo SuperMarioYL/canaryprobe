@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "name": "canaryprobe",
+  "github": "https://github.com/SuperMarioYL/canaryprobe",
+  "host": "canaryprobe.lei6393.com",
+  "lang": { "primary": "zh", "toggle": true },
+  "accent": ["#e6a144", "#e0533c", "#34d3b9"],
+  "hero": {
+    "eyebrow": { "zh": "闭源 · 本地 · 可核验", "en": "Closed binary · Local · Verifiable" },
+    "headline": {
+      "zh": "给读不到源码的 coding agent\n埋下诱饵，一触即警",
+      "en": "Plant a decoy in a closed\ncoding agent — catch the probe"
+    },
+    "sub": {
+      "zh": "诱饵主机名和假凭证一旦被解析或连接，立刻红色告警并留下签名审计证据——把「它有没有偷偷外联」从一次次反编译，变成一个可核验的事件。",
+      "en": "The instant a planted decoy hostname or fake credential is resolved or connected, you get an alarm plus signed audit evidence — turning 'did it exfiltrate?' from a decompilation project into a checkable event."
+    },
+    "command": "pip install canaryprobe",
+    "cta": { "zh": "埋个诱饵", "en": "Plant a decoy" },
+    "ctaGithub": { "zh": "GitHub", "en": "GitHub" },
+    "scroll": { "zh": "看看它怎么抓", "en": "See how it catches" }
+  },
+  "advantages": [
+    {
+      "title": { "zh": "装好诱饵，它一碰就响", "en": "Plant a decoy, it trips on touch" },
+      "body": {
+        "zh": "生成一个看起来像真内部资产的主机名和假凭证，丢进 agent 能读到的地方。一旦它去解析或连接这个诱饵，终端立刻弹出红色告警，写下一行审计记录。",
+        "en": "Mint a hostname and a fake credential that look like real internal assets, drop them where the agent can read them. The moment it resolves or connects one, the terminal flashes a red alarm and writes an audit line."
+      },
+      "chips": ["› decoy hostname + fake credential", "› resolve or connect = alarm", "› live red terminal alert"]
+    },
+    {
+      "title": { "zh": "留下可核验的证据", "en": "Verifiable evidence left behind" },
+      "body": {
+        "zh": "每次触发都写进不可篡改的审计日志，并能产出一份签名证据报告——干净或触发，一目了然。一条命令重新校验签名，确认证据没被改过。",
+        "en": "Every trip lands in a tamper-evident audit log and can render a signed evidence report — clean or tripped, at a glance. One command re-verifies the signature to confirm the evidence was not edited."
+      },
+      "chips": ["› append-only audit log", "› signed evidence report", "› clean / tripped verdict", "› re-verify in one command"]
+    },
+    {
+      "title": { "zh": "本地运行，不出境", "en": "Runs locally, no egress" },
+      "body": {
+        "zh": "传感器只绑在本机回环地址上，诱饵解析也指向回环——探测不会真的把流量送出去。单机部署，无需联网，适合信创与等保的内网边界。",
+        "en": "Sensors bind only to the loopback address and decoys resolve to it too — a probe never actually sends traffic off the box. Single-host, no network needed, fit for air-gapped boundaries."
+      },
+      "chips": ["› single-host, no network", "› loopback sinkhole", "› air-gap friendly"]
+    }
+  ],
+  "scene": { "kind": "hub-nodes", "nodes": ["decoy host", "fake credential", "DNS probe", "TCP connect"] },
+  "cta": {
+    "headline": { "zh": "想知道它有没有偷偷外联？埋个诱饵就知道。", "en": "Want to know if it exfiltrates? Plant a decoy." },
+    "sub": { "zh": "把「它碰了不该碰的东西吗」变成一个能拍下的瞬间。", "en": "Turn 'did it touch what it shouldn't?' into a screenshotable moment." },
+    "button": { "zh": "看 GitHub", "en": "View on GitHub" }
+  },
+  "footer": { "tag": { "zh": "开源 · 本地 · 可核验", "en": "Open source · Local · Verifiable" } }
+}
