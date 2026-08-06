@@ -28,7 +28,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .alarm import AuditLog, render_alarm, render_armed
+from .alarm import AuditLog, TripEvent, render_alarm, render_armed
 from .config import DeploymentConfig, load_or_default
 from .decoy import (
     DecoyKind,
@@ -153,6 +153,33 @@ def plant(
 # ---------------------------------------------------------------------------
 
 
+def _handle_trip(
+    event: TripEvent,
+    audit: AuditLog,
+    trip_count: dict,
+    err_console: Console,
+) -> None:
+    """Record + render a trip.
+
+    The audit append runs first for durability, but a write failure (disk
+    full / read-only fs / fsync error) must NOT silently drop the trip — a
+    security canary's worst failure mode is a silent CLEAN miss.  Surface the
+    I/O error to stderr, then still count the trip and render the alarm so the
+    operator sees the catch live and the in-memory tally stays correct.  The
+    happy path (append succeeds) is unchanged.
+    """
+
+    try:
+        audit.append(event)
+    except OSError as exc:
+        err_console.print(
+            f"[bold red]AUDIT WRITE FAILED[/bold red] — trip {event.decoy_id} "
+            f"NOT recorded to {audit.path}: {exc}"
+        )
+    trip_count["n"] += 1
+    render_alarm(event, console=err_console)
+
+
 @app.command()
 def watch(
     directory: Path = typer.Option(Path.cwd, "--dir", "-d", help="Deployment directory."),
@@ -176,9 +203,7 @@ def watch(
     trip_count = {"n": 0}
 
     def on_trip(event) -> None:  # noqa: ANN001
-        audit.append(event)
-        trip_count["n"] += 1
-        render_alarm(event, console=_err)
+        _handle_trip(event, audit, trip_count, _err)
 
     dns = DnsSensor(cfg, decoys, on_trip)
     conn = ConnSensor(cfg, decoys, on_trip)

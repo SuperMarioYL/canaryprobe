@@ -198,3 +198,59 @@ def test_report_generated_at_is_present_but_unsigned(tmp_path):
     # mutate the generated-at footer only
     tampered_footer = result.markdown.replace("Generated at:", "Generated-at:", 1)
     assert verify_report(tampered_footer, cfg.signing_key()) is True
+
+
+# ---------------------------------------------------------------------------
+# on_trip — audit-append I/O failure must NOT silently drop the trip
+# ---------------------------------------------------------------------------
+
+
+def test_handle_trip_surfaces_audit_write_failure_not_silent(tmp_path):
+    """Regression for fix-on-trip-silent-drop.
+
+    ``on_trip`` appends to the audit log before rendering the alarm.  If the
+    append raises (disk full / read-only fs / fsync error) the sensors wrap
+    the callback in ``except Exception: pass``, which silently swallowed the
+    failure → no audit line, no red panel, zero count, report reads CLEAN.
+    For a security canary that is the worst failure mode (a silent miss).
+
+    With the fix, an audit-append I/O failure is surfaced to stderr, the trip
+    is still counted in memory, and the alarm is still rendered — the trip
+    stays visible.  Without the fix (bare ``audit.append`` with no guard) this
+    test fails: the OSError propagates, the count stays 0, no alarm renders.
+    """
+
+    from io import StringIO
+
+    from rich.console import Console
+
+    from canaryprobe.cli import _handle_trip
+
+    class _FailingAudit:
+        """Stand-in AuditLog whose append always raises an I/O error."""
+
+        def __init__(self, path):
+            self.path = path
+
+        def append(self, event):
+            raise OSError("disk full — simulated audit.append I/O failure")
+
+    audit = _FailingAudit(tmp_path / "audit.jsonl")
+    trip_count = {"n": 0}
+    buf = StringIO()
+    err = Console(file=buf, color_system=None, width=200)
+
+    event = _event(decoy_id="dcy_x", sensor=SensorKind.DNS, value="h.corp.local")
+
+    # Must NOT raise — the failure path is made non-silent, not crash-prone.
+    _handle_trip(event, audit, trip_count, err)
+
+    out = buf.getvalue()
+    # the trip was still counted in memory (would be 0 if the raise aborted the callback)
+    assert trip_count["n"] == 1
+    # the alarm was still rendered live — the catch stays visible
+    assert "TRIPPED" in out
+    assert "dcy_x" in out
+    # the audit-write failure was surfaced rather than swallowed
+    assert "AUDIT WRITE FAILED" in out
+    assert "disk full" in out
