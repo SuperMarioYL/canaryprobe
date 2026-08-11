@@ -44,6 +44,14 @@
         "en": "Sensors bind only to the loopback address and decoys resolve to it too — a probe never actually sends traffic off the box. Single-host, no network needed, fit for air-gapped boundaries."
       },
       "chips": ["› single-host, no network", "› loopback sinkhole", "› air-gap friendly"]
+    },
+    {
+      "title": { "zh": "证据可信，陷阱不瞎", "en": "Evidence you can trust, a trap that won't go blind" },
+      "body": {
+        "zh": "签报告的那把密钥，从生成那一刻起就不对同机其他租户可读——没人能趁它落地的间隙偷走、事后伪造一份「干净」结论。你给诱饵配置随手加个注释，该响的时候照样响，一句备注不会让陷阱悄悄失明。",
+        "en": "The key that signs your report is never readable to a co-tenant on the box from the moment it's created — no one can swipe it in that landing window and later forge a 'clean' verdict. And a stray comment you jot into your decoy config won't silently blind the trap; it still trips when it should."
+      },
+      "chips": ["› key that signs the report, never briefly readable", "› a stray config comment can't blind the trap", "› no forged 'clean' verdict"]
     }
   ],
   "scene": { "kind": "hub-nodes", "nodes": ["decoy host", "fake credential", "DNS probe", "TCP connect"] },
