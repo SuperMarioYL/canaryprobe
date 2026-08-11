@@ -112,6 +112,56 @@ def test_signing_key_env_override(tmp_path, monkeypatch):
     assert not (tmp_path / ".canaryprobe.key").is_file()
 
 
+def test_signing_key_file_created_0600_with_no_0o644_window(tmp_path):
+    """The signing key is the root of trust that signs the decoy manifest AND
+    the evidence report, so its file must be created at 0o600 with no
+    write-then-chmod (0o644) window that would leak it to a co-tenant of a
+    traversable base_dir.
+    """
+    import os
+    import stat
+
+    key = ensure_signing_key(tmp_path)
+    key_path = tmp_path / ".canaryprobe.key"
+    assert key_path.is_file()
+    mode = stat.S_IMODE(os.stat(key_path).st_mode)
+    assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
+    # the persisted content is the returned key, and it round-trips on reload
+    assert key_path.read_text(encoding="utf-8").strip() == key
+    assert len(key) == 64  # token_hex(32)
+    assert ensure_signing_key(tmp_path) == key
+
+
+def test_quoted_value_with_trailing_inline_comment_parses():
+    """Regression for fix-yaml-quoted-value-inline-comment: a quoted scalar
+    followed by ' # comment' must parse to the bare value, not the literal
+    '"value" # comment' string that broke audit_path / decoys loading / the
+    DNS sensor zone.
+    """
+    from canaryprobe.config import _parse_yaml
+
+    assert _parse_yaml('audit_file: "events.jsonl" # trail') == {
+        "audit_file": "events.jsonl"
+    }
+    assert _parse_yaml('decoy_zone: "zone" # c') == {"decoy_zone": "zone"}
+    # single-quoted values behave the same
+    assert _parse_yaml("decoy_zone: 'zone' # c") == {"decoy_zone": "zone"}
+    # a quoted value with no trailing comment still parses (no regression)
+    assert _parse_yaml('audit_file: "events.jsonl"') == {
+        "audit_file": "events.jsonl"
+    }
+
+
+def test_unquoted_value_inline_comment_still_strips():
+    """The unquoted path is unchanged: a ' # comment' is stripped as before."""
+    from canaryprobe.config import _strip_inline_comment
+
+    assert _strip_inline_comment("foo # comment") == "foo"
+    assert _strip_inline_comment("foo") == "foo"
+    assert _strip_inline_comment("foo#bar") == "foo#bar"  # no space -> not a comment
+    assert _strip_inline_comment("") == ""
+
+
 # ---------------------------------------------------------------------------
 # decoy generation
 # ---------------------------------------------------------------------------

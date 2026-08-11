@@ -244,11 +244,18 @@ def ensure_signing_key(base_dir: str | os.PathLike[str]) -> str:
 
     key = secrets.token_hex(32)
     root.mkdir(parents=True, exist_ok=True)
-    key_path.write_text(key, encoding="utf-8")
+    # Create the key file with 0o600 at open time (not write-then-chmod) so
+    # there is no window where the root-of-trust signing key is group/world
+    # readable on a traversable base_dir.  write_text would create at the
+    # default mode (0o666 & ~umask, typically 0o644) and only chmod would
+    # tighten it afterwards — a TOCTOU window that leaks the key.
+    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.chmod(key_path, 0o600)
+        os.fchmod(fd, 0o600)  # pin the mode regardless of umask
     except OSError:  # pragma: no cover - non-POSIX best effort
         pass
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(key)
     return key
 
 
@@ -322,7 +329,23 @@ def _strip_inline_comment(value: str) -> str:
     if not value:
         return value
     if value[0] in "\"'":
-        return value  # quoted — leave as-is, comments inside are literal
+        # Quoted scalar: scan to the matching closing quote (honoring
+        # backslash escapes) and drop any trailing inline comment after it,
+        # so 'foo: "bar" # comment' parses to "bar" rather than the literal
+        # '"bar" # comment'.  Content inside the quotes is left untouched
+        # because a '#' there is part of the literal value.
+        quote = value[0]
+        i = 1
+        n = len(value)
+        while i < n:
+            ch = value[i]
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == quote:
+                return value[: i + 1]
+            i += 1
+        return value  # no closing quote — leave as-is
     hash_idx = value.find(" #")
     if hash_idx != -1:
         return value[:hash_idx].strip()
