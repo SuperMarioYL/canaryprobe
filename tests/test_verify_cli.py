@@ -75,3 +75,21 @@ def test_verify_tripped_report(tmp_path):
     result = runner.invoke(app, ["verify", "--dir", str(tmp_path)])
     assert result.exit_code == 0
     assert "VERIFIED" in result.stdout
+
+
+def test_verify_corrupt_manifest_surfaces_not_crash(tmp_path):
+    """Regression for fix-load-manifest-crash-on-corrupt.
+
+    A corrupt/tampered decoys.manifest.json used to crash `canaryprobe verify`
+    (DecoyManifest.from_json raised, uncaught). With the fix, load_manifest
+    fail-softs to None and verify surfaces 'manifest CORRUPT' + exits non-zero
+    instead of dying with a traceback.
+    """
+    cfg, path = _seed_clean_report(tmp_path)
+    # corrupt the manifest that write_decoys + write_report left behind
+    cfg.manifest_path.write_text("{not valid json", encoding="utf-8")
+    result = runner.invoke(app, ["verify", "--dir", str(tmp_path)])
+    # the report signature is still valid, but the manifest is corrupt -> exit 1
+    assert result.exit_code == 1
+    out = (result.stdout or "") + (result.stderr or "")
+    assert "CORRUPT" in out

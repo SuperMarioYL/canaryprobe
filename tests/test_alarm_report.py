@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from canaryprobe.alarm import AuditLog, SensorKind, TripEvent
 from canaryprobe.config import DeploymentConfig
-from canaryprobe.decoy import generate_decoys, write_decoys
+from canaryprobe.decoy import generate_decoys, load_manifest, write_decoys
 from canaryprobe.report import build_report, verify_report, write_report
 
 
@@ -254,3 +254,98 @@ def test_handle_trip_surfaces_audit_write_failure_not_silent(tmp_path):
     # the audit-write failure was surfaced rather than swallowed
     assert "AUDIT WRITE FAILED" in out
     assert "disk full" in out
+
+
+# ---------------------------------------------------------------------------
+# v0.5.0 — corrupt audit line + corrupt manifest must surface, not silently
+# read CLEAN / crash. (fix-report-silent-drop-on-corrupt-audit-line +
+# fix-load-manifest-crash-on-corrupt)
+# ---------------------------------------------------------------------------
+
+
+def test_audit_log_count_corrupt_tallies_skipped_lines(tmp_path):
+    """A corrupt line is still skipped (don't crash) but now also counted."""
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path)
+    log.append(_event(decoy_id="dcy_good"))
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write("this is not json\n")
+        fh.write("\n")  # blank line is not counted as corrupt
+        fh.write('{"decoy_id": "x"}\n')  # missing sensor -> KeyError -> corrupt
+    assert log.count() == 1
+    assert log.count_corrupt() == 2
+    corrupt = list(log.iter_corrupt())
+    assert "this is not json" in corrupt
+
+
+def test_report_corrupt_line_alongside_trip_is_surfaced(tmp_path):
+    """A corrupt line next to a real trip is surfaced in the signed body."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    log = AuditLog(cfg.audit_path)
+    log.append(_event(decoy_id="dcy_real"))
+    with open(cfg.audit_path, "a", encoding="utf-8") as fh:
+        fh.write("this is not json\n")
+    result = build_report(cfg)
+    assert result.event_count == 1
+    assert result.tripped is True
+    assert result.corrupt_lines == 1
+    assert "Evidence incomplete" in result.markdown
+    assert verify_report(result.markdown, cfg.signing_key()) is True
+
+
+def test_report_corrupt_only_line_does_not_silently_read_clean(tmp_path):
+    """Regression for fix-report-silent-drop-on-corrupt-audit-line.
+
+    A corrupt audit.jsonl line used to be silently skipped, so a single
+    corrupted trip line could make report undercount to event_count=0 and read
+    CLEAN (signed + VERIFIED) over a real trip. With the fix the corrupt-line
+    count is surfaced in the signed body, so the report can never silently read
+    CLEAN over a dropped trip.
+    """
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    # ONLY a corrupt line — no parseable trip.
+    with open(cfg.audit_path, "a", encoding="utf-8") as fh:
+        fh.write("{{bad json\n")
+    result = build_report(cfg)
+    assert result.event_count == 0
+    assert result.verdict == "CLEAN"  # no parseable trip
+    # …but it is NOT a silent CLEAN: the gap is surfaced.
+    assert result.corrupt_lines == 1
+    assert "Evidence incomplete" in result.markdown
+    assert "corrupt audit line" in result.markdown.lower()
+    assert verify_report(result.markdown, cfg.signing_key()) is True
+
+
+def test_load_manifest_fail_soft_on_corrupt_json(tmp_path):
+    """Regression for fix-load-manifest-crash-on-corrupt."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    cfg.manifest_path.write_text("{not valid json", encoding="utf-8")
+    # must NOT raise — fail-soft to None so report/verify surface it in-band.
+    assert load_manifest(cfg) is None
+
+
+def test_load_manifest_fail_soft_on_bad_version(tmp_path):
+    """A manifest whose version the schema rejects fail-softs to None."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    m = json.loads(cfg.manifest_path.read_text(encoding="utf-8"))
+    m["version"] = 2  # Literal[1] rejects this
+    cfg.manifest_path.write_text(json.dumps(m), encoding="utf-8")
+    assert load_manifest(cfg) is None
+
+
+def test_report_corrupt_manifest_is_surfaced_not_crash(tmp_path):
+    """A corrupt manifest is surfaced as 'manifest CORRUPT' in the signed body,
+    not a traceback that denies the operator their evidence."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    _seed_events(cfg, n=1)
+    cfg.manifest_path.write_text("{not valid json", encoding="utf-8")
+    result = build_report(cfg)  # must not raise
+    assert result.manifest_corrupt is True
+    assert "manifest CORRUPT" in result.markdown
+    assert "Evidence incomplete" in result.markdown
+    assert verify_report(result.markdown, cfg.signing_key()) is True

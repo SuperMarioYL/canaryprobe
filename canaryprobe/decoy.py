@@ -26,7 +26,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .config import DeploymentConfig
 
@@ -298,10 +298,31 @@ def load_decoys(config: DeploymentConfig) -> list[Decoy]:
 
 
 def load_manifest(config: DeploymentConfig) -> DecoyManifest | None:
+    """Load the signed manifest, or ``None`` if it is absent OR corrupt.
+
+    A corrupt/tampered ``decoys.manifest.json`` (malformed JSON, a ``version``
+    the schema rejects, a missing ``zone``/``created_at``/``decoys`` field, a bad
+    enum value) must NOT crash ``canaryprobe report``/``verify`` — a security canary's
+    evidence command should surface the tamper in-band, not die with a traceback
+    (which would be a denial-of-evidence vector). So we fail-soft to ``None`` here
+    and let the report/verify callers — which can see whether the file exists —
+    render "manifest CORRUPT/unverifiable" instead of treating it as "absent".
+    (Mirrors the audit-log read path's fail-soft over corrupt lines.)
+    """
+
     path = config.manifest_path
     if not path.is_file():
         return None
-    return DecoyManifest.from_json(path.read_text(encoding="utf-8"))
+    try:
+        return DecoyManifest.from_json(path.read_text(encoding="utf-8"))
+    except (ValidationError, KeyError, ValueError) as exc:
+        # JSONDecodeError is a ValueError subclass, so this covers malformed JSON too.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "manifest corrupt/unparseable at %s: %s", path, exc
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------

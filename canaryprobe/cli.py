@@ -325,8 +325,12 @@ def verify(
     manifest_state = "absent"
     if manifest is not None:
         manifest_state = "verified" if manifest.verify(key) else "TAMPERED"
+    elif cfg.manifest_path.is_file():
+        # load_manifest fail-softs a corrupt/tampered manifest to None; the file
+        # existing means it is corrupt, not absent. Surface it instead of crashing.
+        manifest_state = "CORRUPT"
 
-    manifest_ok = manifest_state != "TAMPERED"
+    manifest_ok = manifest_state not in ("TAMPERED", "CORRUPT")
     if report_ok and manifest_ok:
         _out.print(
             f"[bold green]VERIFIED[/bold green] — report signature matches the "
@@ -342,6 +346,11 @@ def verify(
             )
         if manifest_state == "TAMPERED":
             _out.print("[red]manifest[/red] TAMPERED — the decoy set was edited.")
+        elif manifest_state == "CORRUPT":
+            _out.print(
+                f"[red]manifest[/red] CORRUPT/unparseable — inspect {cfg.manifest_path} "
+                "(the decoy set could not be read; re-init to re-sign it)."
+            )
         raise typer.Exit(code=1)
 
 

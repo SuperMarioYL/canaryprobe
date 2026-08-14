@@ -148,6 +148,34 @@ class AuditLog:
     def count(self) -> int:
         return sum(1 for _ in self.iter_events())
 
+    def iter_corrupt(self) -> Iterator[str]:
+        """Yield the raw text of each non-blank line that failed to parse as a TripEvent.
+
+        ``iter_events`` skips corrupt lines so a single bad line can't crash a report —
+        but a silently-dropped trip line can make ``report`` undercount (and read CLEAN
+        if it was the only trip). ``count_corrupt`` lets the report surface
+        "Evidence incomplete — N corrupt audit line(s) skipped; inspect audit.jsonl"
+        so a non-zero corrupt count can never render a silent CLEAN. The set of corrupt
+        lines is exactly the set ``iter_events`` skips (same parse attempt), so the two
+        stay consistent.
+        """
+
+        if not self.path.is_file():
+            return
+        with open(self.path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    data = json.loads(raw)
+                    TripEvent.from_record(data)  # validate without yielding
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    yield raw
+
+    def count_corrupt(self) -> int:
+        return sum(1 for _ in self.iter_corrupt())
+
 
 # ---------------------------------------------------------------------------
 # Terminal rendering — the visceral red TRIPPED alarm

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-14
+
+Two evidence-honesty fixes that close read-side gaps a security canary cannot
+leave open: a corrupt audit line can no longer make `report` silently read CLEAN
+over a dropped trip, and a corrupt/tampered decoy manifest is surfaced as an
+unverifiable report instead of crashing the evidence command.
+
+### Fixed
+
+- **Corrupt audit lines are surfaced, not silently dropped** —
+  `AuditLog.iter_events` (`alarm.py`) swallowed `JSONDecodeError`/`KeyError`/
+  `ValueError` and skipped a corrupt `audit.jsonl` line, and `read()`/`count()`
+  inherited the silent skip with nothing tallied or surfaced in `canaryprobe
+  report`. So a single corrupted trip line (disk bit-rot, a partial write, or
+  tampering of `audit.jsonl`) could make `report` undercount to `event_count=0`
+  and read CLEAN — signed and VERIFIED — over a real trip. This was the read-side
+  silent-CLEAN-miss, the mirror of the v0.3.0 write-side
+  `fix-on-trip-silent-drop`. `AuditLog` now also exposes
+  `iter_corrupt()`/`count_corrupt()`, and `report` renders "Evidence incomplete —
+  N corrupt audit line(s) skipped; inspect audit.jsonl" in the signed body
+  whenever N>0, so a non-zero corrupt count can never render a silent CLEAN.
+  `read()`/`count()` signatures are unchanged.
+- **Corrupt/tampered decoy manifest fails soft, not crash** — `load_manifest`
+  (`decoy.py`) returned `None` only when the file was absent; it did not catch
+  `DecoyManifest.from_json`'s raise paths (`json.loads` `JSONDecodeError`, the
+  `version=Literal[1]` `ValidationError`, `KeyError` on a manifest missing
+  `zone`/`created_at`/`decoys`). These propagated out of `build_report`
+  (`report.py`) and `canaryprobe verify` (`cli.py`), so a corrupt or
+  attacker-tampered `decoys.manifest.json` made `report`/`verify` crash with a
+  traceback instead of rendering an unverifiable artifact — a denial-of-evidence
+  vector, asymmetric with the audit-log fail-soft path. `load_manifest` now
+  wraps `from_json` in `try/except` and returns `None`; `report` renders
+  "manifest CORRUPT/unparseable" and `verify` surfaces `manifest CORRUPT` +
+  exits non-zero instead of dying.
+
 ## [0.4.0] - 2026-08-11
 
 Two integrity fixes: the signing key is no longer briefly group/world-readable

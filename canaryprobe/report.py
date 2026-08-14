@@ -40,6 +40,8 @@ class ReportResult(BaseModel):
     window_start: datetime | None = None
     window_end: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     manifest_verified: bool | None = None
+    manifest_corrupt: bool = False
+    corrupt_lines: int = 0
     signature: str = ""
     markdown: str = ""
 
@@ -73,11 +75,17 @@ def build_report(
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     audit = AuditLog(config.audit_path)
     events = sorted(audit.read(), key=lambda e: e.ts)
+    corrupt_lines = audit.count_corrupt()
 
     manifest = load_manifest(config)
     manifest_verified: bool | None = None
+    manifest_corrupt = False
     if manifest is not None:
         manifest_verified = manifest.verify(config.signing_key())
+    elif config.manifest_path.is_file():
+        # File exists but load_manifest returned None -> it is corrupt/unparseable,
+        # not absent. Surface it so a tampered manifest can't hide as "no manifest".
+        manifest_corrupt = True
 
     window_start = events[0].ts if events else None
     result = ReportResult(
@@ -86,6 +94,8 @@ def build_report(
         window_start=window_start,
         window_end=now,
         manifest_verified=manifest_verified,
+        manifest_corrupt=manifest_corrupt,
+        corrupt_lines=corrupt_lines,
     )
 
     body = _render_body(config, events, result, manifest)
@@ -123,13 +133,41 @@ def _render_body(
     if result.window_start is not None:
         lines.append(f"| Window start | `{_iso(result.window_start)}` |")
     lines.append(f"| Trip events | {result.event_count} |")
+    if result.corrupt_lines:
+        lines.append(
+            f"| Corrupt audit lines skipped | {result.corrupt_lines} "
+            f"(evidence may be incomplete; inspect `{config.audit_path}`) |"
+        )
     if manifest is not None:
         planted = len(manifest.decoys)
         verified = "verified" if result.manifest_verified else "UNVERIFIED (tampered or wrong key)"
         lines.append(f"| Decoys planted | {planted} ({verified}) |")
+    elif result.manifest_corrupt:
+        lines.append(
+            f"| Decoys planted | manifest CORRUPT/unparseable — inspect `{config.manifest_path}` |"
+        )
     lines.append(f"| DNS sensor bind | `{config.dns_sensor}` |")
     lines.append(f"| TCP sensor bind | `{config.conn_sensor}` |")
     lines.append("")
+
+    if result.corrupt_lines or result.manifest_corrupt:
+        lines.append(
+            "> ⚠ **Evidence incomplete** — "
+            + (
+                f"{result.corrupt_lines} corrupt audit line(s) were skipped "
+                f"(the trip count above may undercount; inspect `{config.audit_path}`)"
+                if result.corrupt_lines else ""
+            )
+            + ("; " if result.corrupt_lines and result.manifest_corrupt else "")
+            + (
+                f"the decoy manifest is corrupt/unparseable "
+                f"(inspect `{config.manifest_path}`)"
+                if result.manifest_corrupt else ""
+            )
+            + ". A CLEAN verdict over an incomplete trail may mask a dropped trip — "
+            "do not treat this report as standalone evidence until the trail is repaired."
+        )
+        lines.append("")
 
     if not events:
         lines.append("## No covert egress observed")

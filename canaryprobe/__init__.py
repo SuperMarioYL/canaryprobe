@@ -8,6 +8,6 @@ Public entry point is the CLI (``canaryprobe init | watch | plant | report``);
 see :mod:`canaryprobe.cli`.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = ["__version__"]
