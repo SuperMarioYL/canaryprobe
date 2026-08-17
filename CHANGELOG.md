@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
+Two evidence-honesty fixes that close denial-of-evidence holes the v0.5.0
+corrupt-input surfacing itself left open — a single attacker-tampered
+`audit.jsonl` line or `decoys.manifest.json`/`decoys.json` holding a
+valid-JSON-but-wrong-shape value no longer crashes `report`/`verify`/`watch`/
+`simulate-trip` before the corrupt-line tally / CORRUPT-manifest / re-init
+surfacing can fire — plus a regression/fuzz test pinning the fail-soft path.
+
+### Fixed
+
+- **Valid-JSON-wrong-shape audit lines and manifests fail soft, not crash** —
+  the v0.5.0 fail-soft `except` tuples caught only `JSONDecodeError`/`KeyError`/
+  `ValueError` (audit) and `ValidationError`/`KeyError`/`ValueError` (manifest).
+  A valid-JSON-but-non-dict audit line (`null`, `[1]`, `5`, `"x"`, `true`)
+  raised `TypeError` at `data["decoy_id"]`; a non-dict manifest value raised
+  `AttributeError` at `data.get(...)`; a non-iterable or list-of-non-dict
+  `decoys` raised `TypeError` in the `Decoy.from_dict` comprehension — none
+  caught, so they propagated out of `read()`/`build_report`/`verify` as a
+  traceback, and the v0.5.0 corrupt-line tally / CORRUPT-manifest surfacing
+  never fired because the crash preceded it. This was exactly the attacker-tamper
+  threat model the v0.5.0 fixes targeted — a denial-of-evidence hole punched
+  through the v0.5.0 surfacing itself. `TypeError` is now caught in
+  `AuditLog.iter_events`/`iter_corrupt` (`alarm.py`) and `TypeError` +
+  `AttributeError` in `load_manifest` (`decoy.py`); `read()`/`count()`/
+  `count_corrupt()` signatures are unchanged — the new shapes fold into the
+  existing skip/corrupt-yield + return-`None` path.
+- **Corrupt/tampered `decoys.json` fails soft, not crash** — `load_decoys`
+  (`decoy.py`) had no error handling at all (unlike its hardened sibling
+  `load_manifest` in the same module); `json.loads` + the `Decoy.from_dict`
+  loop raised uncaught on a corrupt/tampered `decoys.json` (malformed JSON, a
+  decoy missing `id`/`kind`/`value`, a non-list `decoys`, a non-dict element, a
+  non-dict top-level value), propagating out of `canaryprobe watch` and
+  `simulate-trip` as a raw traceback — sensors never armed (no protection) and
+  the operator saw a stack trace. `load_decoys` now wraps the parse in
+  `try/except` and raises a typed `DecoysCorruptError` the CLI renders as
+  "decoys.json corrupt — re-init with `canaryprobe init`" (exit 2) rather than
+  returning `[]` silently, so a corruption is not mislabelled as a fresh
+  install. An absent file still returns `[]` (genuine fresh install).
+
+### Tests
+
+- **Corrupt-input fail-soft path pinned** — `tests/test_corrupt_input_failsoft.py`
+  feeds a representative set of valid-JSON-wrong-shape values into each fail-soft
+  boundary (audit non-dict lines, non-dict/non-list manifests, corrupt
+  `decoys.json`) and asserts surfacing rather than an uncaught exception, so a
+  future narrowing of the broadened `except` tuples re-opens the
+  denial-of-evidence hole in CI, not the field.
+
 ## [0.5.0] - 2026-08-14
 
 Two evidence-honesty fixes that close read-side gaps a security canary cannot
@@ -130,7 +179,9 @@ Initial release — the honeytoken tripwire for a coding-agent binary you can't 
 - Bilingual README (简体中文 primary + English sibling) and a 10-minute local-agent
   reproduce-the-catch walkthrough.
 
-[Unreleased]: https://github.com/SuperMarioYL/canaryprobe/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SuperMarioYL/canaryprobe/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/SuperMarioYL/canaryprobe/releases/tag/v0.6.0
+[0.5.0]: https://github.com/SuperMarioYL/canaryprobe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/SuperMarioYL/canaryprobe/releases/tag/v0.4.0
 [0.2.0]: https://github.com/SuperMarioYL/canaryprobe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SuperMarioYL/canaryprobe/releases/tag/v0.1.0

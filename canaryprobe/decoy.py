@@ -287,14 +287,58 @@ def write_decoys(config: DeploymentConfig, decoys: list[Decoy]) -> tuple[Path, P
     return decoys_path, manifest_path
 
 
+class DecoysCorruptError(RuntimeError):
+    """Raised by :func:`load_decoys` when ``decoys.json`` is present but corrupt.
+
+    A runtime file that is present-but-corrupt is a distinct state from absent:
+    returning ``[]`` silently would fall through to the existing "No decoys
+    planted" path and mislabel a tamper as a fresh install.  Raising a typed
+    error lets the CLI render "decoys.json corrupt — re-init with
+    canaryprobe init" so the operator is guided to repair rather than left with
+    a bare traceback (and sensors that never armed).  Mirrors the fail-soft
+    symmetry with :func:`load_manifest`, which fail-softs a corrupt manifest to
+    an in-band "manifest CORRUPT" surface.
+    """
+
+
 def load_decoys(config: DeploymentConfig) -> list[Decoy]:
-    """Load the planted decoys for the sensors/report to consult."""
+    """Load the planted decoys for the sensors/report to consult.
+
+    A corrupt/tampered ``decoys.json`` (malformed JSON, a decoy missing
+    ``id``/``kind``/``value``, a non-list ``decoys``, a non-dict element, or a
+    non-dict top-level value) raises :class:`DecoysCorruptError` rather than a
+    raw traceback — the sensors never arm on a corrupt file, and the CLI
+    surfaces a guided "re-init" message so a tamper is not mislabelled as a
+    fresh install.  An absent file returns ``[]`` (genuine fresh install).
+    """
 
     path = config.decoys_path
     if not path.is_file():
         return []
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return [Decoy.from_dict(d) for d in data.get("decoys", [])]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [Decoy.from_dict(d) for d in data.get("decoys", [])]
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as exc:
+        # JSONDecodeError = malformed JSON; KeyError = a decoy dict missing a
+        # required field; ValueError = bad enum kind / bad timestamp; TypeError
+        # = a non-iterable decoys or a non-dict element (1["id"]); AttributeError
+        # = a non-dict top-level value (data.get raises). All are the
+        # present-but-corrupt state — surface a guided error, don't crash.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "decoys.json corrupt/unparseable at %s: %s", path, exc
+        )
+        raise DecoysCorruptError(
+            f"decoys.json corrupt — re-init with `canaryprobe init` "
+            f"({path}: {exc.__class__.__name__}: {exc})"
+        ) from exc
 
 
 def load_manifest(config: DeploymentConfig) -> DecoyManifest | None:
@@ -315,8 +359,14 @@ def load_manifest(config: DeploymentConfig) -> DecoyManifest | None:
         return None
     try:
         return DecoyManifest.from_json(path.read_text(encoding="utf-8"))
-    except (ValidationError, KeyError, ValueError) as exc:
-        # JSONDecodeError is a ValueError subclass, so this covers malformed JSON too.
+    except (ValidationError, KeyError, ValueError, TypeError, AttributeError) as exc:
+        # JSONDecodeError is a ValueError subclass, so this covers malformed JSON.
+        # TypeError/AttributeError cover a non-dict manifest value (data.get raises
+        # AttributeError) and a non-iterable / list-of-non-dict decoys field (the
+        # Decoy.from_dict comprehension raises TypeError) — surfacing these as
+        # manifest CORRUPT instead of crashing is the v0.6.0 fail-soft broadening
+        # of the v0.5.0 corrupt-manifest surfacing (a structural wrong-shape value
+        # is exactly the attacker-tamper threat model the tally was built for).
         import logging
 
         logging.getLogger(__name__).warning(
@@ -432,5 +482,6 @@ __all__ = [
     "write_decoys",
     "load_decoys",
     "load_manifest",
+    "DecoysCorruptError",
     "injection_instructions",
 ]

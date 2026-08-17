@@ -31,6 +31,7 @@ from . import __version__
 from .alarm import AuditLog, TripEvent, render_alarm, render_armed
 from .config import DeploymentConfig, load_or_default
 from .decoy import (
+    DecoysCorruptError,
     DecoyKind,
     generate_decoys,
     injection_instructions,
@@ -192,7 +193,15 @@ def watch(
     """Arm the DNS + TCP sensors; alarm and audit the instant a decoy is touched."""
 
     cfg = load_or_default(Path(directory))
-    decoys = load_decoys(cfg)
+    try:
+        decoys = load_decoys(cfg)
+    except DecoysCorruptError as exc:
+        _err.print(
+            "[red]decoys.json corrupt — re-init with "
+            "[bold]canaryprobe init[/bold].[/red]"
+        )
+        _err.print(f"[dim]{exc}[/dim]")
+        raise typer.Exit(code=2)
     if not decoys:
         _err.print(
             "[red]No decoys planted.[/red] Run [bold]canaryprobe init[/bold] first."
@@ -370,7 +379,15 @@ def simulate_trip(
     ``watch`` fires the alarm. This is what the demo uses to produce the catch."""
 
     cfg = load_or_default(Path(directory))
-    decoys = load_decoys(cfg)
+    try:
+        decoys = load_decoys(cfg)
+    except DecoysCorruptError as exc:
+        _err.print(
+            "[red]decoys.json corrupt — re-init with "
+            "[bold]canaryprobe init[/bold].[/red]"
+        )
+        _err.print(f"[dim]{exc}[/dim]")
+        raise typer.Exit(code=2)
     hosts = [d for d in decoys if d.kind is DecoyKind.HOSTNAME]
     if not hosts:
         _err.print("[red]No hostname decoy planted.[/red] Run init first.")

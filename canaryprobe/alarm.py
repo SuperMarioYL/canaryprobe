@@ -142,7 +142,10 @@ class AuditLog:
                 try:
                     data = json.loads(raw)
                     yield TripEvent.from_record(data)
-                except (json.JSONDecodeError, KeyError, ValueError):
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    # A valid-JSON-but-non-dict line (null/[1]/5/"x"/true) raises
+                    # TypeError at data["decoy_id"] — fold it into the same skip
+                    # path so the corrupt-line tally fires instead of a crash.
                     continue
 
     def count(self) -> int:
@@ -170,7 +173,9 @@ class AuditLog:
                 try:
                     data = json.loads(raw)
                     TripEvent.from_record(data)  # validate without yielding
-                except (json.JSONDecodeError, KeyError, ValueError):
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    # Same structural non-dict shapes as iter_events — counted
+                    # corrupt here so the report surfaces them, never raised.
                     yield raw
 
     def count_corrupt(self) -> int:
