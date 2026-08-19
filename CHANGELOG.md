@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-20
+
+Three correctness fixes in `deployment.yaml` loading — the last runtime file
+the v0.5.0/v0.6.0 corrupt-input fail-soft had not hardened. A bug-hunt read of
+shipped v0.6.0 source (HEAD f76bf98) found three HIGH-confidence defects in
+`canaryprobe/config.py`: a corrupt `deployment.yaml` crashed every command
+(`watch` = no protection, `report`/`verify` = denial-of-evidence); an unquoted
+leading-`#` value was parsed as the literal comment text, minting a
+detectable-as-fake decoy hostname and a DNS sensor zone no real query could
+match (trips silently never fired); and a sensor block omitting `port:`
+silently armed at port 0 (a random bind the config reported as 0, so the armed
+banner pointed the agent at port 0 and the trip silently never fired).
+
+### Fixed
+
+- **Fail-soft a corrupt `deployment.yaml` instead of crashing every command**
+  — `load_or_default` called `DeploymentConfig.load` with no try/except, so a
+  present-but-corrupt config propagated a raw pydantic `ValidationError` out of
+  every CLI command. The hand-rolled parser turned a bare scalar key
+  (`audit_file:` with no value — a plausible "clear this to use the default"
+  edit) into a dict and `audit_file: null` into `None`; both failed pydantic's
+  `str` field and crashed `init`/`watch`/`report`/`verify` with a traceback.
+  This was the last unhardened corrupt-input path, asymmetric with the
+  v0.5.0/v0.6.0 fail-soft on the sibling runtime files (`decoys.json`/
+  `decoys.manifest.json`/`audit.jsonl`). `load_or_default` now wraps the load
+  in `try/except (ValidationError, ValueError, OSError, TypeError)` and raises
+  a typed `DeploymentConfigCorruptError` (mirroring `DecoysCorruptError`); the
+  CLI renders "deployment.yaml corrupt — re-init with `canaryprobe init`" and
+  exits 2 (`watch`/`report`/`verify`/`simulate-trip`), while `init` — the
+  recovery command — falls back to a fresh default and overwrites the corrupt
+  file. No command crashes with a raw traceback.
+- **Strip an unquoted leading-`#` comment value, not treat it as the literal
+  value** — `_strip_inline_comment`'s unquoted branch only matched a ` #`
+  (space-then-hash), so a value that STARTED with `#` after the colon
+  (`decoy_zone: # use default corp.local`) was returned verbatim as the literal
+  string. The zone validator only required a `.`, so it accepted that garbage
+  zone → the minted decoy hostname contained spaces/`#` (trivially detectable
+  as fake) and the DNS sensor's zone could never match a real query (DNS names
+  cannot hold spaces/`#`) → DNS trips silently never fired. For path fields
+  (`audit_file: # note`) it silently wrote the audit trail to a file literally
+  named `# note`. This was the unquoted-value gap left beside the v0.4.0
+  `fix-yaml-quoted-value-inline-comment`. An unquoted value whose stripped form
+  starts with `#` is now treated as comment-only/empty (the key carries no
+  value), and the load-level guard above surfaces the resulting bare key.
+- **Inherit the default bind port when a sensor block omits the port line**
+  — `from_dict` built each sensor as `SensorBind(**data["..._sensor"])`;
+  `SensorBind.port`'s field default was `0`, while the intended default ports
+  (5353/5443) lived only in `DeploymentConfig`'s `default_factory` lambdas,
+  which don't apply to a partial dict. An operator who set a custom sensor
+  `host:` and omitted `port:` silently got `port=0`: `bind((host, 0))` picked a
+  random port, but the config reported `0`, so the armed banner and injection
+  instructions pointed the agent at port 0 → the trip silently never fired (a
+  security canary that arms "successfully" but can never be tripped). `from_dict`
+  now merges each provided sensor dict over the per-sensor defaults so an
+  omitted key inherits the documented bind (5353/5443); an explicit `port: 0`
+  still passes through (random bind stays opt-in).
+
 ## [0.6.0] - 2026-08-17
 
 Two evidence-honesty fixes that close denial-of-evidence holes the v0.5.0

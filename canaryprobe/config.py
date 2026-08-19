@@ -19,7 +19,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -187,9 +187,30 @@ class DeploymentConfig(BaseModel):
         if "decoy_zone" in data:
             kwargs["decoy_zone"] = data["decoy_zone"]
         if isinstance(data.get("dns_sensor"), dict):
-            kwargs["dns_sensor"] = SensorBind(**data["dns_sensor"])
+            # Merge the operator's partial block over the per-sensor defaults so
+            # an OMITTED key inherits the documented bind (port 5353), not
+            # SensorBind.port's own default of 0. ``SensorBind.port`` defaults to
+            # 0 (random bind) which is an opt-in the deployment's default_factory
+            # lambdas override — but those lambdas don't apply to a partial dict,
+            # so without this merge an operator who sets only ``host:`` silently
+            # gets ``port=0``: the sensor binds a random port while the config
+            # reports 0, the armed banner points the agent at port 0, and the trip
+            # never fires. An explicit ``port: 0`` still wins via the merge.
+            kwargs["dns_sensor"] = SensorBind(
+                **{
+                    "host": DEFAULT_DNS_BIND_HOST,
+                    "port": DEFAULT_DNS_BIND_PORT,
+                    **data["dns_sensor"],
+                }
+            )
         if isinstance(data.get("conn_sensor"), dict):
-            kwargs["conn_sensor"] = SensorBind(**data["conn_sensor"])
+            kwargs["conn_sensor"] = SensorBind(
+                **{
+                    "host": DEFAULT_CONN_BIND_HOST,
+                    "port": DEFAULT_CONN_BIND_PORT,
+                    **data["conn_sensor"],
+                }
+            )
         for key in ("decoys_file", "manifest_file", "audit_file"):
             if key in data:
                 kwargs[key] = data[key]
@@ -202,6 +223,22 @@ class DeploymentConfig(BaseModel):
         return cls(base_dir=Path(base_dir) if base_dir is not None else Path.cwd())
 
 
+class DeploymentConfigCorruptError(RuntimeError):
+    """Raised by :func:`load_or_default` when ``deployment.yaml`` is present
+    but unparseable/invalid.
+
+    ``deployment.yaml`` is the last runtime file the v0.5.0/v0.6.0 corrupt-input
+    fail-soft had not hardened — a present-but-corrupt config (a bare scalar key
+    like ``audit_file:`` the parser turns into a dict, or ``audit_file: null``
+    coerced to ``None``) failed pydantic's ``str`` field and propagated a raw
+    ``ValidationError`` out of every CLI command: ``watch`` crashed before the
+    sensors armed (no protection), ``report``/``verify`` crashed before rendering
+    evidence (denial-of-evidence). Raising a typed error lets the CLI render
+    "deployment.yaml corrupt — re-init with canaryprobe init" (exit 2) instead of
+    a bare traceback — mirroring :class:`canaryprobe.decoy.DecoysCorruptError`.
+    """
+
+
 def load_or_default(
     base_dir: str | os.PathLike[str] | None = None,
 ) -> DeploymentConfig:
@@ -209,13 +246,33 @@ def load_or_default(
     default config anchored at ``base_dir``.
 
     This is the entry point the CLI uses so ``init`` works with zero prior
-    config while ``watch`` / ``report`` pick up an operator's edits.
+    config while ``watch`` / ``report`` pick up an operator's edits.  A
+    present-but-corrupt ``deployment.yaml`` raises
+    :class:`DeploymentConfigCorruptError` (caught by the CLI as a guided
+    "re-init" error) rather than a raw ``ValidationError`` traceback.
     """
 
     root = Path(base_dir) if base_dir is not None else Path.cwd()
     cfg_path = root / DEFAULT_CONFIG_FILENAME
     if cfg_path.is_file():
-        return DeploymentConfig.load(cfg_path)
+        try:
+            return DeploymentConfig.load(cfg_path)
+        except (ValidationError, ValueError, OSError, TypeError) as exc:
+            # ValidationError = a coerced value fails the field type (a bare
+            # scalar key -> dict, or `null` -> None, failing a `str` field);
+            # ValueError = the zone validator rejecting a bad zone;
+            # OSError = unreadable file / bad encoding; TypeError = a
+            # non-mapping shape handed to from_dict. All are the
+            # present-but-corrupt state — surface a guided error, don't crash.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "deployment.yaml corrupt/unparseable at %s: %s", cfg_path, exc
+            )
+            raise DeploymentConfigCorruptError(
+                f"deployment.yaml corrupt/unparseable — re-init with "
+                f"`canaryprobe init` ({cfg_path}: {exc.__class__.__name__}: {exc})"
+            ) from exc
     return DeploymentConfig.default(root)
 
 
@@ -346,6 +403,18 @@ def _strip_inline_comment(value: str) -> str:
                 return value[: i + 1]
             i += 1
         return value  # no closing quote — leave as-is
+    # An unquoted value that STARTS with '#' is comment-only — there is no
+    # value before the comment (e.g. 'decoy_zone: # use default corp.local').
+    # The ' #' lookup below only matches a SPACE-then-hash, so without this
+    # guard the whole '# use default corp.local' is returned as the literal
+    # value; for decoy_zone the validator only requires a '.', so it would
+    # accept that garbage zone — minting a decoy hostname containing spaces/
+    # '#' (trivially detectable as fake) and a DNS sensor zone no real query
+    # can ever match, so DNS trips silently never fire. Treat it as empty so
+    # the key carries no value (mirroring the v0.4.0 quoted-value inline-comment
+    # fix), and let the load-level guard handle the resulting bare key.
+    if value.startswith("#"):
+        return ""
     hash_idx = value.find(" #")
     if hash_idx != -1:
         return value[:hash_idx].strip()
@@ -375,6 +444,7 @@ def _coerce(value: str) -> Any:
 __all__ = [
     "SensorBind",
     "DeploymentConfig",
+    "DeploymentConfigCorruptError",
     "load_or_default",
     "ensure_signing_key",
     "DEFAULT_CONFIG_FILENAME",

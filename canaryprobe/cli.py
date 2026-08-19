@@ -29,7 +29,7 @@ from rich.table import Table
 
 from . import __version__
 from .alarm import AuditLog, TripEvent, render_alarm, render_armed
-from .config import DeploymentConfig, load_or_default
+from .config import DeploymentConfig, DeploymentConfigCorruptError, load_or_default
 from .decoy import (
     DecoysCorruptError,
     DecoyKind,
@@ -73,6 +73,29 @@ def _main(
     """CanaryProbe — plant decoys, arm sensors, prove no covert egress."""
 
 
+def _load_cfg(directory: Path) -> DeploymentConfig:
+    """Load the deployment config, exiting cleanly on a corrupt deployment.yaml.
+
+    A present-but-corrupt ``deployment.yaml`` (a bare scalar key the parser
+    turns into a dict, or a ``null`` coerced to ``None`` failing a ``str``
+    field) used to propagate a raw ``ValidationError`` out of every command —
+    ``watch`` crashed before the sensors armed (no protection), ``report``/
+    ``verify`` crashed before rendering evidence (denial-of-evidence). It now
+    surfaces a guided "deployment.yaml corrupt — re-init" message and exits 2,
+    mirroring the ``DecoysCorruptError`` path the sibling runtime files use.
+    """
+
+    try:
+        return load_or_default(Path(directory))
+    except DeploymentConfigCorruptError as exc:
+        _err.print(
+            "[red]deployment.yaml corrupt/unparseable — re-init with "
+            "[bold]canaryprobe init[/bold].[/red]"
+        )
+        _err.print(f"[dim]{exc}[/dim]")
+        raise typer.Exit(code=2)
+
+
 # ---------------------------------------------------------------------------
 # init / plant
 # ---------------------------------------------------------------------------
@@ -84,7 +107,14 @@ def _do_init(
     hostnames: int,
     credentials: int,
 ) -> None:
-    cfg = load_or_default(dir_)
+    try:
+        cfg = load_or_default(dir_)
+    except DeploymentConfigCorruptError:
+        # ``init`` IS the recovery command ("re-init with canaryprobe init"),
+        # so a present-but-corrupt deployment.yaml must not crash it: fall back
+        # to a fresh default so save() overwrites the corrupt file instead of
+        # leaving the operator stuck with an unloadable config.
+        cfg = DeploymentConfig.default(dir_)
     if zone:
         cfg = DeploymentConfig.from_dict(
             {**_config_to_dict(cfg), "decoy_zone": zone}, base_dir=dir_
@@ -192,7 +222,7 @@ def watch(
 ) -> None:
     """Arm the DNS + TCP sensors; alarm and audit the instant a decoy is touched."""
 
-    cfg = load_or_default(Path(directory))
+    cfg = _load_cfg(Path(directory))
     try:
         decoys = load_decoys(cfg)
     except DecoysCorruptError as exc:
@@ -278,7 +308,7 @@ def report(
 ) -> None:
     """Emit a signed clean/TRIPPED evidence artifact from the audit log."""
 
-    cfg = load_or_default(Path(directory))
+    cfg = _load_cfg(Path(directory))
     path, result = write_report(cfg, path=output)
 
     if result.tripped:
@@ -319,7 +349,7 @@ def verify(
     confirm the evidence was produced by this deployment and not edited.
     """
 
-    cfg = load_or_default(Path(directory))
+    cfg = _load_cfg(Path(directory))
     target = Path(report_path) if report_path is not None else (cfg.base_dir / "report.md")
     if not target.is_file():
         _err.print(f"[red]report not found:[/red] {target}")
@@ -378,7 +408,7 @@ def simulate_trip(
     """Stand in for a coding agent: resolve/connect a planted decoy so a running
     ``watch`` fires the alarm. This is what the demo uses to produce the catch."""
 
-    cfg = load_or_default(Path(directory))
+    cfg = _load_cfg(Path(directory))
     try:
         decoys = load_decoys(cfg)
     except DecoysCorruptError as exc:
