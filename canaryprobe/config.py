@@ -363,7 +363,7 @@ def _parse_yaml(text: str) -> dict[str, Any]:
         line = raw_line.rstrip()
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        indent = len(line) - len(line.lstrip(" "))
+        indent = len(line) - len(line.lstrip(" \t"))
         stripped = line.strip()
         if ":" not in stripped:
             continue
