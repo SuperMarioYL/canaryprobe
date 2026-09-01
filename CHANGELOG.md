@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-01
+
+A fixes-only iteration, amended against v0.8.0 (amend-canaryprobe-v0.9.0).
+A bug-hunt read of shipped v0.8.0 source found a HIGH-confidence
+version-drift defect: the v0.8.0 release bumped only the `VERSION` file and
+left every Python package-version surface one release behind, so
+`canaryprobe --version` reported `0.7.0` at the `v0.8.0` tag and a wheel
+built from that tag was named `canaryprobe-0.7.0` — colliding with the
+previously-shipped v0.7.0 wheel and making the v0.8.0 release un-installable
+as `0.8.0`. No prior iteration (v0.3.0-v0.8.0, all config/audit soundness
+fixes) touched the version-reporting surfaces, so the drift accumulated
+unbroken across two releases.
+
+### Fixed
+
+- **Bump the stale package-version surfaces to match the release tag**
+  — `canaryprobe/__init__.py` (`__version__`) and `pyproject.toml`
+  (`version`) still read `0.7.0` at the `v0.8.0` tag, while `VERSION`
+  read `v0.8.0`. The two were never bumped in lockstep with the tag, so
+  `canaryprobe --version` misreported the running release and the built
+  distribution carried the wrong version metadata. All version-reporting
+  surfaces now move in lockstep to `0.9.0` (`__init__.py`, `pyproject.toml`,
+  `VERSION`, `web/site.json`'s `content_version`/`version`), and a
+  `tests/test_version_consistency.py` regression test pins them together so a
+  future release that bumps only one surface re-opens the drift loudly in CI.
+  The missing `[0.8.0]` changelog entry is also backfilled below so the
+  release that shipped at tag `v0.8.0` is traceable.
+
+## [0.8.0] - 2026-08-24
+
+Backfill: the `v0.8.0` tag shipped (commit `c705803`,
+`fix(config): tab-indented sensor blocks parse correctly`) without a
+changelog entry. Recorded here for release traceability.
+
+### Fixed
+
+- **Tab-indented sensor blocks in `deployment.yaml` parse correctly**
+  — `_parse_yaml` computed indentation with `line.lstrip(" ")`, which only
+  strips spaces, so a tab-indented sensor block (`conn_sensor:` followed by
+  tab-indented `host:`/`port:`) parsed at indent 0 and its keys relocated to
+  the top level where pydantic's `extra='ignore'` silently dropped them. The
+  sensor then bound the default loopback address instead of the operator's
+  intended host, and trips silently never fired. `_parse_yaml` now counts
+  tabs as indentation (`lstrip(" \t")`) so a tab-indented `host:`/`port:`
+  nests under its sensor block and the operator's values are honored.
+
 ## [0.7.0] - 2026-08-20
 
 Three correctness fixes in `deployment.yaml` loading — the last runtime file

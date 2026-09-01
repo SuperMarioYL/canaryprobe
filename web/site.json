@@ -132,9 +132,14 @@
       "en": "Open source · Local · Verifiable"
     }
   },
-  "content_version": "v0.8.0",
-  "generated_at": "2026-08-23T20:22:46Z",
+  "content_version": "v0.9.0",
+  "generated_at": "2026-09-01T04:21:00Z",
   "changelog": [
+    {
+      "version": "v0.9.0",
+      "date": "2026-09-01",
+      "note": "fix: version drift — package metadata surfaces (__init__.py + pyproject.toml) now move in lockstep with the VERSION file and the release tag, so `canaryprobe --version` reports the true release and a built wheel no longer collides with a prior release's version. Backfilled the missing v0.8.0 changelog entry for traceability."
+    },
     {
       "version": "v0.8.0",
       "date": "2026-08-24",
