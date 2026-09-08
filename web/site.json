@@ -104,6 +104,10 @@
           "alt": {
             "zh": "脚本创建临时诱饵，向真实本地 DNS 传感器发送一次查询，再校验报告和清单。没有启动 Coding Agent，也未测试外部网络；生成的主机名、端口与时间会随运行变化。",
             "en": "The script plants temporary decoys, sends one query to a real local DNS sensor and verifies the report and manifest. It launches no coding agent and tests no external network. Generated hostnames, ports and timestamps vary between runs."
+          },
+          "mobile": {
+            "light": "/assets/presentation/process-mobile-light.svg",
+            "dark": "/assets/presentation/process-mobile-dark.svg"
           }
         }
       },
@@ -122,6 +126,10 @@
           "alt": {
             "zh": "init 生成诱饵、部署配置与 HMAC 清单。watch 在一个进程里运行权威 DNS 与 TCP 传感器，触发后向 audit.jsonl 追加事件；report 读取事件和清单生成带 HMAC 的 Markdown，verify 用同一部署密钥重新计算。",
             "en": "init creates decoys, deployment configuration and an HMAC manifest. watch runs authoritative DNS and TCP sensors in one process and appends events to audit.jsonl. report reads events and the manifest to produce HMAC-signed Markdown; verify recomputes signatures using the deployment key."
+          },
+          "mobile": {
+            "light": "/assets/presentation/architecture-mobile-light.svg",
+            "dark": "/assets/presentation/architecture-mobile-dark.svg"
           }
         }
       },
@@ -140,6 +148,10 @@
           "alt": {
             "zh": "默认 DNS 绑定 127.0.0.1:5353，TCP 绑定 127.0.0.1:5443。必须让实际测试流量到达这些传感器；单独修改 /etc/hosts 不会把 DNS 查询导向 5353。",
             "en": "Default binds are 127.0.0.1:5353 for DNS and 127.0.0.1:5443 for TCP. Tested traffic must reach those listeners; editing /etc/hosts alone does not route DNS queries to port 5353."
+          },
+          "mobile": {
+            "light": "/assets/presentation/integrations-mobile-light.svg",
+            "dark": "/assets/presentation/integrations-mobile-dark.svg"
           }
         }
       }
@@ -233,5 +245,17 @@
   "footer": {
     "tag": "0.9.0 · Python 3.12+ · Apache-2.0"
   },
-  "content_version": "v0.9.0"
+  "content_version": "v0.9.0",
+  "changelog": [
+    {
+      "version": "v0.9.0",
+      "date": "2026-09-01",
+      "note": "fix: version drift — package metadata surfaces (__init__.py + pyproject.toml) now move in lockstep with the VERSION file and the release tag, so `canaryprobe --version` reports the true release and a built wheel no longer collides with a prior release's version. Backfilled the missing v0.8.0 changelog entry for traceability."
+    },
+    {
+      "version": "v0.8.0",
+      "date": "2026-08-24",
+      "note": "refresh: content re-verified for v0.8.0 (fix-yaml-tab-indent-silent-wrong-bind — tab-indented sensor blocks no longer silently drop host/port, so a mis-indented canary no longer binds loopback and never fires)."
+    }
+  ]
 }
