@@ -1,0 +1,17 @@
+{
+  "version": "0.9.0",
+  "scope": "Real loopback DNS query against a temporary planted hostname, append-only audit and HMAC report verification. No coding agent or external network was exercised.",
+  "inputs": [
+    {
+      "path": "examples/presentation-demo.py",
+      "sha256": "088522472c215dbd44892a3af301f7299d34e2323da71949ab315c3a8e0a9a55"
+    }
+  ],
+  "steps": [
+    {
+      "command": ".venv/bin/python examples/presentation-demo.py",
+      "output": "Request: [127.0.0.1:63137] (udp) / 'ci-runner-07-91.corp.local.' (A)\nReply: [127.0.0.1:63137] (udp) / 'ci-runner-07-91.corp.local.' (A) / RRs: A\n{\n  \"dns_answer\": \"127.0.0.1\",\n  \"verdict\": \"TRIPPED\",\n  \"events\": 1,\n  \"manifest_verified\": true,\n  \"report_verified\": true\n}\n",
+      "exit_code": 0
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "mode": "auto",
+  "id": "ce56e6-e76ab9-cfacf6-48903865ca27",
+  "identity": "https://github.com/supermarioyl/canaryprobe",
+  "primary": "#ce56e6",
+  "secondary": "#e76ab9",
+  "highlight": "#cfacf6",
+  "dark": {
+    "bg": "#090712",
+    "panel": "#12101f",
+    "code": "#120d1d",
+    "ink": "#f5eefd",
+    "muted": "#ad9cc4",
+    "line": "#341841",
+    "primary": "#ce56e6",
+    "secondary": "#e76ab9",
+    "highlight": "#cfacf6",
+    "accent": "#ce56e6",
+    "buttonStart": "#b14ac6",
+    "buttonEnd": "#b65392",
+    "buttonText": "#ffffff"
+  },
+  "light": {
+    "bg": "#fdf9fe",
+    "panel": "#fdf7fe",
+    "code": "#fcf3fd",
+    "ink": "#241630",
+    "muted": "#6d5e88",
+    "line": "#f0cbf7",
+    "primary": "#a946bd",
+    "secondary": "#ad508b",
+    "highlight": "#7e6895",
+    "accent": "#a946bd",
+    "buttonStart": "#b14ac6",
+    "buttonEnd": "#b65392",
+    "buttonText": "#ffffff"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "name": "CanaryProbe",
+  "tagline": "Turn a decoy touch into a checkable event.",
+  "architecture": {
+    "title": "Local observation to signed report",
+    "nodes": [
+      {
+        "title": "Decoys and config",
+        "detail": "Hostname / credential / binds"
+      },
+      {
+        "title": "DNS and TCP sensors",
+        "detail": "Userspace listeners"
+      },
+      {
+        "title": "Audit log",
+        "detail": "Timestamped TripEvent JSONL"
+      },
+      {
+        "title": "Report and verify",
+        "detail": "HMAC-SHA256 / Markdown"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ]
+    ]
+  },
+  "process": {
+    "title": "Send one local DNS query",
+    "steps": [
+      {
+        "title": "Plant decoys",
+        "detail": "Temporary deployment"
+      },
+      {
+        "title": "Query the DNS sensor",
+        "detail": "Loopback answer"
+      },
+      {
+        "title": "Read and verify",
+        "detail": "1 event / valid HMAC"
+      }
+    ],
+    "result": "A real loopback DNS request produced TRIPPED and a verified report."
+  },
+  "integrations": {
+    "title": "Deployment inputs and evidence outputs",
+    "items": [
+      {
+        "title": "deployment.yaml",
+        "detail": "Sensor addresses / paths"
+      },
+      {
+        "title": "DNS requests",
+        "detail": "Authoritative decoy zone"
+      },
+      {
+        "title": "TCP connections",
+        "detail": "Credential observation"
+      },
+      {
+        "title": "JSONL audit",
+        "detail": "Append-only event records"
+      },
+      {
+        "title": "Markdown report",
+        "detail": "HMAC verification"
+      }
+    ]
+  }
+}
