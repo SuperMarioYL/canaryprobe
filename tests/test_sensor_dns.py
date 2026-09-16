@@ -179,6 +179,55 @@ def test_conn_sensor_captures_decoy_credential(tmp_path):
     assert ev.decoy_id == cred.id
 
 
+def test_conn_sensor_bind_reports_actual_port_on_port0(tmp_path):
+    """Regression for fix-port0-random-bind-banner-reports-zero (v0.10.0).
+
+    An explicit ``port: 0`` is the documented random-bind opt-in (config.py's
+    merge keeps it). The ``bind`` property — what the armed banner renders —
+    must report the port the sensor ACTUALLY bound, never the configured 0:
+    an armed banner pointing at ":0" is a bind nothing can dial, so the trip
+    silently never fires.
+    """
+    cfg = _cfg(tmp_path, dns_port=_free_udp_port(), conn_port=0)
+    sensor = ConnSensor(cfg, [], lambda e: None)
+    try:
+        sensor.start()
+        actual = sensor._sock.getsockname()[1]
+        assert actual != 0
+        assert sensor.bind == f"127.0.0.1:{actual}"
+    finally:
+        sensor.stop()
+
+
+def test_dns_sensor_bind_reports_actual_port_on_port0(tmp_path):
+    """Same lockstep as the conn sensor: port-0 DNS bind reports the real port."""
+    cfg = _cfg(tmp_path, dns_port=0, conn_port=_free_port())
+    sensor = DnsSensor(cfg, [], lambda e: None)
+    try:
+        sensor.start()
+        udp = getattr(sensor._server, "server", None) or getattr(
+            sensor._server, "udp_server", None
+        )
+        actual = udp.socket.getsockname()[1]
+        assert actual != 0
+        assert sensor.bind == f"127.0.0.1:{actual}"
+    finally:
+        sensor.stop()
+
+
+def test_bind_reports_configured_port_when_fixed(tmp_path):
+    """A fixed (non-zero) configured port still reports verbatim."""
+    cfg = _cfg(tmp_path, dns_port=_free_udp_port(), conn_port=_free_port())
+    sensor = ConnSensor(cfg, [], lambda e: None)
+    try:
+        sensor.start()
+        assert sensor.bind == (
+            f"127.0.0.1:{cfg.conn_sensor.port}"
+        )
+    finally:
+        sensor.stop()
+
+
 def _wait_for(pred, timeout: float = 3.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

@@ -50,12 +50,22 @@ class ConnSensor:
         # connect itself is the signal (the agent dialed the sinkholed decoy).
         self._primary = self._host_decoys[0] if self._host_decoys else None
         self._sock: socket.socket | None = None
+        self._bound_port: int | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
 
     @property
     def bind(self) -> str:
-        return f"{self.config.conn_sensor.host}:{self.config.conn_sensor.port}"
+        # Report the port the sensor ACTUALLY bound once started: an explicit
+        # ``port: 0`` is the documented random-bind opt-in, and the armed
+        # banner rendering this string must point the operator at the reachable
+        # port, not at a literal ":0" nothing can dial.
+        port = (
+            self._bound_port
+            if self._bound_port is not None
+            else self.config.conn_sensor.port
+        )
+        return f"{self.config.conn_sensor.host}:{port}"
 
     def start(self) -> None:
         if self._sock is not None:
@@ -66,6 +76,7 @@ class ConnSensor:
         sock.listen(16)
         sock.settimeout(0.25)  # so the accept loop can observe the stop flag
         self._sock = sock
+        self._bound_port = sock.getsockname()[1]
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._serve, name="canaryprobe-conn-sensor", daemon=True
@@ -131,6 +142,7 @@ class ConnSensor:
             except OSError:
                 pass
             self._sock = None
+            self._bound_port = None
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None

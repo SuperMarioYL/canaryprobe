@@ -130,10 +130,20 @@ class DnsSensor:
         )
         self._server: DNSServer | None = None
         self._started = threading.Event()
+        self._bound_port: int | None = None
 
     @property
     def bind(self) -> str:
-        return f"{self.config.dns_sensor.host}:{self.config.dns_sensor.port}"
+        # Report the port the server ACTUALLY bound once started: an explicit
+        # ``port: 0`` is the documented random-bind opt-in, and the armed
+        # banner rendering this string must point the operator at the reachable
+        # port, not at a literal ":0" nothing can dial.
+        port = (
+            self._bound_port
+            if self._bound_port is not None
+            else self.config.dns_sensor.port
+        )
+        return f"{self.config.dns_sensor.host}:{port}"
 
     def start(self) -> None:
         """Bind + serve in a daemon thread.  Idempotent."""
@@ -152,12 +162,29 @@ class DnsSensor:
         )
         # dnslib's DNSServer.start_thread() runs the UDP server on its own thread.
         self._server.start_thread()
+        self._bound_port = self._udp_socket_port()
         self._started.set()
+
+    def _udp_socket_port(self) -> int | None:
+        """The port the underlying UDP socket actually bound (dnslib has moved
+        the UDPServer between attribute names across builds — probe both)."""
+
+        if self._server is None:
+            return None
+        udp = getattr(self._server, "server", None) or getattr(
+            self._server, "udp_server", None
+        )
+        sock = getattr(udp, "socket", None)
+        try:
+            return sock.getsockname()[1] if sock is not None else None
+        except OSError:  # pragma: no cover - socket gone between calls
+            return None
 
     def stop(self) -> None:
         if self._server is not None:
             self._server.stop()
             self._server = None
+            self._bound_port = None
             self._started.clear()
 
     def is_running(self) -> bool:
