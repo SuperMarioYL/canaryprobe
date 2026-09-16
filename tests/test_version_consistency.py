@@ -15,6 +15,7 @@ the drift loudly here in CI instead of shipping a mis-versioned distribution.
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -23,6 +24,7 @@ import canaryprobe
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _VERSION_FILE = _REPO_ROOT / "VERSION"
+_SITE_JSON = _REPO_ROOT / "web" / "site.json"
 
 
 def _pyproject_version() -> str:
@@ -32,8 +34,12 @@ def _pyproject_version() -> str:
 
 
 def _version_file_value() -> str:
-    """The bare ``0.9.0`` form (the ``VERSION`` file stores ``v0.9.0``)."""
+    """The bare form (the ``VERSION`` file stores a leading ``v``)."""
     return _VERSION_FILE.read_text(encoding="utf-8").strip().lstrip("v")
+
+
+def _site_json() -> dict:
+    return json.loads(_SITE_JSON.read_text(encoding="utf-8"))
 
 
 def test_init_version_matches_pyproject():
@@ -69,3 +75,26 @@ def test_cli_version_flag_reports_true_release():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
     assert canaryprobe.__version__ in (result.stdout or "")
+
+
+def test_site_json_content_version_matches_release():
+    """Regression for quality-version-lockstep-pin-site-json (v0.10.0).
+
+    The v0.9.0 fix (fix-version-drift-package-metadata) claims four version
+    surfaces move in lockstep — including web/site.json's ``content_version`` —
+    but pinned only three. This closes the gap: the site is the most public
+    surface (canaryprobe.lei6393.com), so a release that bumps the code
+    surfaces but leaves the site stale re-opens the drift loudly here.
+    """
+    expected = canaryprobe.__version__
+    site = _site_json()
+    assert site["content_version"].lstrip("v") == expected
+    assert site["meta"]["content_version"].lstrip("v") == expected
+
+
+def test_site_json_changelog_latest_matches_release():
+    """The site's latest changelog entry must describe the shipping release."""
+    expected = canaryprobe.__version__
+    site = _site_json()
+    assert site["changelog"], "site.json must carry a changelog"
+    assert site["changelog"][0]["version"].lstrip("v") == expected

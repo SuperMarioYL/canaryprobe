@@ -9,7 +9,7 @@
 
 **在本地种下主机名与假凭证诱饵，用 DNS/TCP 传感器记录触发，并生成可验证的报告。**
 
-`v0.9.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
+`v0.10.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
 [Website](https://canaryprobe.lei6393.com) · [Demo record](docs/demo-results.json)
 

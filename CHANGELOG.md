@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-16
+
+A fixes-only iteration, amended against v0.9.0 (amend-canaryprobe-v0.10.0).
+A bug-hunt read of shipped v0.9.0 source — every candidate verified by running
+the reproduction — found two user-visible correctness defects and one
+regression-pin gap. No open issues demanded feature work (0 issues ever
+filed; CI green at the tag).
+
+### Fixed
+
+- **Report the port a sensor actually bound when `port: 0` is configured**
+  — the v0.7.0 partial-sensor-bind fix kept an explicit `port: 0` as the
+  documented random-bind opt-in, but `ConnSensor.bind` and
+  `DnsSensor.bind` rendered the CONFIGURED port, so the armed banner pointed
+  at `:0` while the sensor bound a random (unreachable-as-advertised) port —
+  the documented opt-in armed a sensor nothing could dial. Both sensors now
+  capture the real bound port at start (`getsockname()`; dnslib's
+  `DNSServer.server.socket` for the DNS side) and the armed banner reports
+  it. (at canaryprobe/sensor_conn.py, canaryprobe/sensor_dns.py)
+
+- **Stop `verify` minting a signing key and crashing on a read-only
+  deployment dir** — `canaryprobe verify` routed through
+  `ensure_signing_key`, so an audit command (1) created a brand-new
+  `.canaryprobe.key` as a write side effect whenever the key file was lost,
+  and (2) crashed with a raw PermissionError traceback on a read-only
+  deployment dir (denial of evidence — the audit loop is the command most
+  likely to run against read-only evidence). `verify` now uses the new
+  non-minting `lookup_signing_key` (env > key file > None) and exits 2 with
+  a guided message when no key exists; `canaryprobe report` also surfaces a
+  guided error (exit 2) instead of a traceback when the signing key or the
+  report cannot be written. `init` keeps minting — it is the provisioning
+  command. (at canaryprobe/config.py, canaryprobe/cli.py)
+
+### Quality
+
+- **Pin the fourth version-lockstep surface** — the v0.9.0 fix claims
+  `web/site.json`'s `content_version` moves in lockstep with the release,
+  but `tests/test_version_consistency.py` pinned only three surfaces. The
+  site (canaryprobe.lei6393.com) is now pinned too, so a future one-sided
+  bump re-opens the drift loudly in CI on the most public surface.
+
 ## [0.9.0] - 2026-09-01
 
 A fixes-only iteration, amended against v0.8.0 (amend-canaryprobe-v0.9.0).
