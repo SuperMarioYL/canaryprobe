@@ -29,7 +29,12 @@ from rich.table import Table
 
 from . import __version__
 from .alarm import AuditLog, TripEvent, render_alarm, render_armed
-from .config import DeploymentConfig, DeploymentConfigCorruptError, load_or_default
+from .config import (
+    DeploymentConfig,
+    DeploymentConfigCorruptError,
+    load_or_default,
+    lookup_signing_key,
+)
 from .decoy import (
     DecoysCorruptError,
     DecoyKind,
@@ -309,7 +314,20 @@ def report(
     """Emit a signed clean/TRIPPED evidence artifact from the audit log."""
 
     cfg = _load_cfg(Path(directory))
-    path, result = write_report(cfg, path=output)
+    try:
+        path, result = write_report(cfg, path=output)
+    except OSError as exc:
+        # Building the report can mint a signing key or write report.md — an
+        # unwritable (e.g. read-only-mounted) deployment dir must surface a
+        # guided error, not a raw PermissionError traceback (denial of
+        # evidence: the evidence command must always complete in-band).
+        _err.print(f"[red]cannot write the report[/red] — {exc}")
+        _err.print(
+            "The deployment directory may be read-only, so the signing key or "
+            "report could not be created there. Point [bold]--dir[/bold] at a "
+            "writable deployment directory."
+        )
+        raise typer.Exit(code=2)
 
     if result.tripped:
         _out.print(
@@ -345,8 +363,9 @@ def verify(
 
     Recomputes the report's HMAC-SHA256 over the signed body and (when a manifest
     is present) the manifest signature, printing VERIFIED or TAMPERED. Exits
-    non-zero on a tamper or a missing report — the check an auditor runs to
-    confirm the evidence was produced by this deployment and not edited.
+    non-zero on a tamper, a missing report, or a missing signing key — and it
+    NEVER mints a key: an audit command must not create trust anchors (nor
+    crash on a read-only deployment dir).
     """
 
     cfg = _load_cfg(Path(directory))
@@ -357,7 +376,20 @@ def verify(
         raise typer.Exit(code=2)
 
     markdown = target.read_text(encoding="utf-8")
-    key = cfg.signing_key()
+    # The audit command must never CREATE trust anchors: look up the existing
+    # key read-only (env > key file) instead of routing through
+    # ``signing_key()``/``ensure_signing_key``, which mints + persists a fresh
+    # key when absent (a surprising write side effect here, and a raw
+    # PermissionError crash on a read-only deployment dir). A missing key is a
+    # guided exit, not a mint.
+    key = lookup_signing_key(cfg.base_dir)
+    if key is None:
+        _err.print(
+            "[red]signing key not found — cannot verify.[/red] Restore "
+            "[bold].canaryprobe.key[/bold] in the deployment directory or set "
+            "[bold]CANARYPROBE_SIGNING_KEY[/bold]."
+        )
+        raise typer.Exit(code=2)
     report_ok = verify_report(markdown, key)
 
     manifest = load_manifest(cfg)

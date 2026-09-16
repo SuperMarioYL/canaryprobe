@@ -316,6 +316,31 @@ def ensure_signing_key(base_dir: str | os.PathLike[str]) -> str:
     return key
 
 
+def lookup_signing_key(base_dir: str | os.PathLike[str]) -> str | None:
+    """Return the deployment signing key WITHOUT minting one.
+
+    Read-only counterpart of :func:`ensure_signing_key` for audit commands:
+    ``$CANARYPROBE_SIGNING_KEY`` first, then an existing ``.canaryprobe.key``,
+    else ``None`` — never writes. ``canaryprobe verify`` used to route through
+    ``signing_key``/``ensure_signing_key`` and so (1) minted a fresh
+    root-of-trust key as a write side effect when the key file was lost, and
+    (2) crashed with a raw PermissionError on a read-only deployment dir —
+    denial of evidence for the very command most likely to run against a
+    read-only copy of a deployment. Callers handle ``None`` as "cannot verify".
+    """
+
+    root = Path(base_dir)
+    env = os.environ.get(SIGNING_KEY_ENV, "").strip()
+    if env:
+        return env
+    key_path = root / _SIGNING_KEY_FILENAME
+    if key_path.is_file():
+        existing = key_path.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Minimal YAML (flat + one-level nesting) — no third-party dependency
 # ---------------------------------------------------------------------------
@@ -447,6 +472,7 @@ __all__ = [
     "DeploymentConfigCorruptError",
     "load_or_default",
     "ensure_signing_key",
+    "lookup_signing_key",
     "DEFAULT_CONFIG_FILENAME",
     "DEFAULT_DECOY_ZONE",
     "SIGNING_KEY_ENV",
