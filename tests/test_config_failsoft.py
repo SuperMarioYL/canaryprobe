@@ -242,3 +242,97 @@ def test_partial_sensor_round_trips_through_yaml(tmp_path):
     reloaded = load_or_default(tmp_path)
     assert reloaded.dns_sensor.host == "10.0.0.5"
     assert reloaded.dns_sensor.port == DEFAULT_DNS_BIND_PORT
+
+
+# ---------------------------------------------------------------------------
+# v0.11.0 — tab-before-# inline comment + the init --zone boundary
+# ---------------------------------------------------------------------------
+
+
+def test_strip_inline_comment_tab_before_hash_is_stripped():
+    """Regression for fix-yaml-tab-before-inline-comment-misparse.
+
+    ``_strip_inline_comment`` matched only the two-character sequence
+    space-then-hash (``value.find(" #")``), so an inline comment introduced by a
+    TAB — legal YAML whitespace, and the editor-default whitespace v0.8.0 already
+    had to accommodate — was kept as part of the value. With the fix any
+    whitespace-then-hash starts the comment."""
+    assert _strip_inline_comment("corp.local\t# production zone") == "corp.local"
+    assert _strip_inline_comment("audit.jsonl\t# the trail") == "audit.jsonl"
+
+
+def test_strip_inline_comment_tab_case_leaves_other_paths_unchanged():
+    """Guard: the space-then-hash strip, the leading-``#`` strip (v0.7.0) and the
+    quoted-value behaviour (v0.4.0) must all still hold, and a literal ``#`` with
+    no leading whitespace is still part of the value (YAML requires whitespace
+    before an inline comment)."""
+    assert _strip_inline_comment("corp.local # comment") == "corp.local"
+    assert _strip_inline_comment("# use default corp.local") == ""
+    assert _strip_inline_comment('"# use default"') == '"# use default"'
+    assert _strip_inline_comment("audit#1.jsonl") == "audit#1.jsonl"
+    assert _strip_inline_comment("audit.jsonl") == "audit.jsonl"
+
+
+def test_parse_yaml_tab_before_hash_value_is_not_comment_garbage():
+    """End-to-end parser pin: ``decoy_zone: corp.local<TAB># production zone`` must
+    parse to ``corp.local``, not to the garbage string carrying the tab and the
+    comment text (which the dotted-only zone validator would accept)."""
+    parsed = _parse_yaml("decoy_zone: corp.local\t# production zone\n")
+    assert parsed["decoy_zone"] == "corp.local"
+
+
+def test_load_decoy_zone_tab_comment_yields_clean_zone(tmp_path):
+    """The security property: the loaded zone must be exactly ``corp.local`` — not
+    a zone carrying a tab plus comment text, which no real DNS query can ever
+    match (DNS trips silently never fire) and which mints a hostname trivially
+    detectable as fake."""
+    (tmp_path / "deployment.yaml").write_text(
+        "decoy_zone: corp.local\t# production zone\n", encoding="utf-8"
+    )
+    cfg = load_or_default(tmp_path)
+    assert cfg.decoy_zone == "corp.local"
+
+
+def test_init_cli_tab_comment_zone_mints_clean_decoy_hostname(tmp_path):
+    """End-to-end: ``canaryprobe init`` on a config whose zone carries a
+    tab-introduced comment mints a decoy under the clean zone, so the DNS sensor's
+    authoritative zone matches a real query."""
+    import json
+
+    (tmp_path / "deployment.yaml").write_text(
+        "decoy_zone: corp.local\t# production zone\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
+    assert result.exit_code == 0
+    payload = json.loads((tmp_path / "decoys.json").read_text(encoding="utf-8"))
+    assert payload["zone"] == "corp.local"
+    for host in (d["value"] for d in payload["decoys"] if d["kind"] == "hostname"):
+        assert host.endswith(".corp.local")
+        assert "\t" not in host and " " not in host and "#" not in host
+
+
+def test_init_cli_invalid_zone_exits_guided_not_traceback(tmp_path):
+    """Regression for fix-init-zone-invalid-raw-traceback.
+
+    ``_do_init`` wrapped only the config LOAD path; the ``--zone`` override went
+    through ``DeploymentConfig.from_dict`` unwrapped (cli.py:124), so a dotless
+    ``--zone`` propagated a raw pydantic ``ValidationError`` traceback out of the
+    first command an operator runs. With the fix it is a guided exit 2, and the
+    rejected zone leaves no partial config/decoy files behind."""
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path), "--zone", "bogus"])
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "zone" in out.lower()
+    assert "Traceback" not in out
+    assert not (tmp_path / "deployment.yaml").exists()
+    assert not (tmp_path / "decoys.json").exists()
+
+
+def test_init_cli_valid_zone_still_writes_config(tmp_path):
+    """Guard: a valid dotted ``--zone`` keeps the unchanged success path."""
+    result = runner.invoke(
+        app, ["init", "--dir", str(tmp_path), "--zone", "example.internal"]
+    )
+    assert result.exit_code == 0
+    assert load_or_default(tmp_path).decoy_zone == "example.internal"
+

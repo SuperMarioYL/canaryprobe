@@ -98,3 +98,22 @@ def test_site_json_changelog_latest_matches_release():
     site = _site_json()
     assert site["changelog"], "site.json must carry a changelog"
     assert site["changelog"][0]["version"].lstrip("v") == expected
+
+
+def test_readme_version_lines_match_release():
+    """Both READMEs quote the release on their version line; a release that bumps
+    the code surfaces and leaves a README stale would advertise the wrong version
+    on the two pages a visitor reads first."""
+    expected = canaryprobe.__version__
+    for name in ("README.md", "README.en.md"):
+        text = (_REPO_ROOT / name).read_text(encoding="utf-8")
+        assert f"`v{expected}`" in text, f"{name} does not quote v{expected}"
+
+
+def test_changelog_latest_entry_matches_release():
+    """``CHANGELOG.md`` must carry an entry for the shipping release — a release
+    with no changelog entry leaves its own changes undocumented."""
+    expected = canaryprobe.__version__
+    text = (_REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert f"## [{expected}]" in text, f"CHANGELOG.md has no [{expected}] entry"
+

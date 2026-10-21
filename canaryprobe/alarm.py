@@ -134,7 +134,14 @@ class AuditLog:
     def iter_events(self) -> Iterator[TripEvent]:
         if not self.path.is_file():
             return
-        with open(self.path, "r", encoding="utf-8") as fh:
+        # errors="replace" so an undecodable byte in the trail (bit-rot / partial
+        # write / tamper) can never raise UnicodeDecodeError out of this lazy
+        # `for raw in fh` iteration — which happens OUTSIDE the per-line except
+        # below — and crash report/verify before the corrupt-line tally fires.
+        # A replaced byte makes the line fail JSON parsing (counted corrupt); a
+        # well-formed line carrying one replaced byte still parses and is still
+        # counted as a trip, so no trip is silently dropped.
+        with open(self.path, "r", encoding="utf-8", errors="replace") as fh:
             for raw in fh:
                 raw = raw.strip()
                 if not raw:
@@ -160,12 +167,13 @@ class AuditLog:
         "Evidence incomplete — N corrupt audit line(s) skipped; inspect audit.jsonl"
         so a non-zero corrupt count can never render a silent CLEAN. The set of corrupt
         lines is exactly the set ``iter_events`` skips (same parse attempt), so the two
-        stay consistent.
+        stay consistent. Undecodable bytes are read with ``errors="replace"`` (same as
+        ``iter_events``) so this pass can't raise either.
         """
 
         if not self.path.is_file():
             return
-        with open(self.path, "r", encoding="utf-8") as fh:
+        with open(self.path, "r", encoding="utf-8", errors="replace") as fh:
             for raw in fh:
                 raw = raw.strip()
                 if not raw:

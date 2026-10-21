@@ -305,3 +305,142 @@ def test_simulate_trip_corrupt_decoys_json_surfaces_reinit_not_crash(tmp_path):
     out = (result.stdout or "") + (result.stderr or "")
     assert "decoys.json corrupt" in out
     assert "re-init" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# v0.11.0 — the UNDECODABLE-BYTE dimension of the same fail-soft
+# ---------------------------------------------------------------------------
+#
+# fix-corrupt-input-failsoft-misses-typeerror-attributeerror (v0.6.0) pinned the
+# valid-JSON-wrong-SHAPE dimension. A file whose BYTES are not decodable UTF-8 is
+# the other corruption dimension the v0.5.0/v0.6.0 tally never reached: the audit
+# reader decodes lazily at the `for raw in fh` statement, OUTSIDE the per-line
+# except tuple, so one bad byte raised UnicodeDecodeError out of read()/
+# count_corrupt() and crashed report/verify before the tally could fire.
+# fix-audit-log-undecodable-byte-crash reads the trail with errors="replace", so
+# a bad byte folds into the counted-corrupt path and a valid-JSON line carrying a
+# replaced byte still parses (no trip is dropped).
+
+#: A line whose bytes are not valid UTF-8 (bit-rot / partial write / tamper).
+UNDECODABLE_AUDIT_LINE = b"\xff\xfe\x00bad\n"
+
+
+def test_audit_log_undecodable_byte_line_is_corrupt_not_crash(tmp_path):
+    """Regression for fix-audit-log-undecodable-byte-crash.
+
+    Appending one undecodable byte to ``audit.jsonl`` used to raise
+    ``UnicodeDecodeError`` from ``alarm.py:138`` (``for raw in fh``) — outside the
+    per-line except tuple — so ``read()``/``count_corrupt()`` raised and
+    ``canaryprobe report``/``verify`` died with a traceback before the v0.5.0
+    corrupt-line tally could surface anything. With the fix the bad line is
+    counted corrupt and never raised.
+    """
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path)
+    log.append(_event(decoy_id="dcy_good"))
+    with open(path, "ab") as fh:
+        fh.write(UNDECODABLE_AUDIT_LINE)
+
+    events = log.read()  # must not raise
+    assert [e.decoy_id for e in events] == ["dcy_good"]
+    assert log.count_corrupt() == 1
+
+
+def test_report_surfaces_undecodable_audit_line_as_evidence_incomplete(tmp_path):
+    """The security property: an undecodable audit line surfaces 'Evidence
+    incomplete' in the signed report body rather than crashing ``build_report``
+    (denial-of-evidence on a degraded evidence dir)."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    with open(cfg.audit_path, "ab") as fh:
+        fh.write(UNDECODABLE_AUDIT_LINE)
+    result = build_report(cfg)  # must not raise
+    assert result.event_count == 0
+    assert result.corrupt_lines == 1
+    assert "Evidence incomplete" in result.markdown
+    assert "corrupt audit line" in result.markdown.lower()
+    assert verify_report(result.markdown, cfg.signing_key()) is True
+
+
+def test_audit_log_valid_json_line_with_undecodable_byte_still_counted_as_trip(tmp_path):
+    """Guard: replacing the undecodable byte must not DROP a real trip. A
+    well-formed JSON line carrying one bad byte still parses after the fix, so it
+    is counted as a trip (not silently skipped as corrupt) — the fix must not
+    trade a crash for a silent CLEAN."""
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path)
+    good = json.dumps(_event(decoy_id="dcy_x").to_record(), sort_keys=True)
+    # a valid JSON line whose observed_value carries one undecodable byte
+    line_with_bad_byte = good.encode("utf-8").replace(
+        b"h.corp.local", b"h.corp.local\xff"
+    )
+    with open(path, "wb") as fh:
+        fh.write(good.encode("utf-8") + b"\n")
+        fh.write(line_with_bad_byte + b"\n")
+
+    events = log.read()  # must not raise
+    assert [e.decoy_id for e in events] == ["dcy_x", "dcy_x"]
+    assert log.count_corrupt() == 0
+
+
+def test_verify_cli_undecodable_report_md_exits_guided_not_traceback(tmp_path):
+    """Regression for fix-verify-report-key-read-undecodable-byte-crash (report.md).
+
+    ``cli.verify`` read report.md with a strict UTF-8 decode (cli.py:378), so a
+    corrupted copy raised ``UnicodeDecodeError`` out of the audit command instead
+    of the guided exit the v0.10.0 hardening established."""
+    init = runner.invoke(app, ["init", "--dir", str(tmp_path)])
+    assert init.exit_code == 0
+    report = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+    assert report.exit_code == 0
+    with open(tmp_path / "report.md", "ab") as fh:
+        fh.write(b"\xff\xfe\n")
+
+    result = runner.invoke(app, ["verify", "--dir", str(tmp_path)])
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "unreadable" in out.lower()
+    assert "Traceback" not in out
+
+
+def test_verify_cli_undecodable_signing_key_exits_guided_not_traceback(tmp_path):
+    """Regression for fix-verify-report-key-read-undecodable-byte-crash (key file).
+
+    ``lookup_signing_key`` read ``.canaryprobe.key`` with a strict UTF-8 decode
+    (config.py:338), so a corrupted key file raised ``UnicodeDecodeError`` out of
+    ``canaryprobe verify`` — denial-of-evidence on the audit command — instead of
+    the guided "signing key not found" exit. The unreadable key must also not be
+    replaced: verify never writes."""
+    init = runner.invoke(app, ["init", "--dir", str(tmp_path)])
+    assert init.exit_code == 0
+    report = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+    assert report.exit_code == 0
+    key_path = tmp_path / ".canaryprobe.key"
+    key_path.write_bytes(b"\xff\xfe\xff")
+
+    result = runner.invoke(app, ["verify", "--dir", str(tmp_path)])
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "signing key" in out.lower()
+    assert "Traceback" not in out
+    # the corrupt key file is left as-is (no mint, no overwrite)
+    assert key_path.read_bytes() == b"\xff\xfe\xff"
+
+
+def test_report_cli_undecodable_signing_key_exits_guided_not_traceback(tmp_path):
+    """``canaryprobe report`` reaches ``ensure_signing_key`` (config.py:297) to
+    sign, so an undecodable key file crashed it with a raw ``UnicodeDecodeError``
+    traceback — the report CLI's guard catches ``OSError`` only. It must surface a
+    guided error (exit 2) instead, and must NOT silently re-mint the key."""
+    init = runner.invoke(app, ["init", "--dir", str(tmp_path)])
+    assert init.exit_code == 0
+    key_path = tmp_path / ".canaryprobe.key"
+    key_path.write_bytes(b"\xff\xfe\xff")
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "signing key" in out.lower()
+    assert "Traceback" not in out
+    assert key_path.read_bytes() == b"\xff\xfe\xff"  # not re-minted
+

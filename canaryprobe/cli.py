@@ -24,6 +24,7 @@ from typing import Optional
 
 import typer
 from dnslib import DNSRecord
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -121,9 +122,23 @@ def _do_init(
         # leaving the operator stuck with an unloadable config.
         cfg = DeploymentConfig.default(dir_)
     if zone:
-        cfg = DeploymentConfig.from_dict(
-            {**_config_to_dict(cfg), "decoy_zone": zone}, base_dir=dir_
-        )
+        # The --zone override is validated inside DeploymentConfig.from_dict; an
+        # invalid value (e.g. a dotless `--zone bogus`) raises pydantic's
+        # ValidationError here, OUTSIDE the load guard above. Render the same
+        # guided error the file-based path uses instead of a raw traceback —
+        # `init` is the first command an operator runs, and nothing has been
+        # written yet at this point.
+        try:
+            cfg = DeploymentConfig.from_dict(
+                {**_config_to_dict(cfg), "decoy_zone": zone}, base_dir=dir_
+            )
+        except (ValidationError, ValueError) as exc:
+            _err.print(
+                f"[red]invalid --zone {zone!r}[/red] — use a dotted zone name, "
+                "e.g. [bold]corp.local[/bold]."
+            )
+            _err.print(f"[dim]{exc}[/dim]")
+            raise typer.Exit(code=2)
     # Persist the config so watch/report agree on zone + binds.
     config_path = cfg.save()
 
@@ -328,6 +343,17 @@ def report(
             "writable deployment directory."
         )
         raise typer.Exit(code=2)
+    except UnicodeDecodeError as exc:
+        # Signing reads .canaryprobe.key as text; an undecodable key file (a
+        # corrupt root of trust) must surface a guided error rather than a raw
+        # decode traceback — and must NOT be silently re-minted, which would
+        # invalidate every signature the deployment already produced.
+        _err.print(f"[red]signing key unreadable[/red] — {exc}")
+        _err.print(
+            "Restore [bold].canaryprobe.key[/bold] in the deployment directory "
+            "or set [bold]CANARYPROBE_SIGNING_KEY[/bold]."
+        )
+        raise typer.Exit(code=2)
 
     if result.tripped:
         _out.print(
@@ -375,7 +401,20 @@ def verify(
         _err.print("Run [bold]canaryprobe report[/bold] first.")
         raise typer.Exit(code=2)
 
-    markdown = target.read_text(encoding="utf-8")
+    try:
+        markdown = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        # A corrupted copy of report.md (bit-rot / truncated transfer / tamper)
+        # must not crash the audit command with a raw decode traceback — that is
+        # the denial-of-evidence class the read-only-dir hardening closed for the
+        # other failure mode. An unreadable report cannot be verified: guided exit.
+        _err.print(f"[red]report unreadable[/red] — {target} is not valid UTF-8 text ({exc}).")
+        _err.print(
+            "The file may be corrupt or truncated. Re-generate it with "
+            "[bold]canaryprobe report[/bold], or verify another copy with "
+            "[bold]--report[/bold]."
+        )
+        raise typer.Exit(code=2)
     # The audit command must never CREATE trust anchors: look up the existing
     # key read-only (env > key file) instead of routing through
     # ``signing_key()``/``ensure_signing_key``, which mints + persists a fresh

@@ -16,6 +16,7 @@ never needs anything more exotic than scalars and one level of nesting.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -335,7 +336,14 @@ def lookup_signing_key(base_dir: str | os.PathLike[str]) -> str | None:
         return env
     key_path = root / _SIGNING_KEY_FILENAME
     if key_path.is_file():
-        existing = key_path.read_text(encoding="utf-8").strip()
+        try:
+            existing = key_path.read_text(encoding="utf-8").strip()
+        except UnicodeDecodeError:
+            # An undecodable key file is not a usable trust anchor. Treat it as
+            # absent (None) so the caller renders its guided "cannot verify"
+            # message instead of dying with a raw decode traceback — and never
+            # mint a replacement here: this lookup must not write.
+            existing = ""
         if existing:
             return existing
     return None
@@ -440,9 +448,17 @@ def _strip_inline_comment(value: str) -> str:
     # fix), and let the load-level guard handle the resulting bare key.
     if value.startswith("#"):
         return ""
-    hash_idx = value.find(" #")
-    if hash_idx != -1:
-        return value[:hash_idx].strip()
+    # An inline comment starts at a '#' preceded by whitespace — a space OR a
+    # tab. `value.find(" #")` matched only the space form, so a tab-introduced
+    # comment ('decoy_zone: corp.local\t# production zone' — a tab is the
+    # editor-default whitespace v0.8.0 already had to accommodate) was kept as
+    # part of the value; the zone validator only requires a dot, so it accepted
+    # the garbage zone, minting a decoy hostname containing a tab + the comment
+    # text (trivially detectable as fake) under a DNS zone no real query can
+    # ever match — so DNS trips silently never fired.
+    match = re.search(r"[ \t]#", value)
+    if match:
+        return value[: match.start()].strip()
     return value
 
 

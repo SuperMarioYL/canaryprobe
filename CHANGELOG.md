@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-22
+
+A fixes-only iteration, amended against v0.10.0 (amend-canaryprobe-v0.11.0).
+A bug-hunt read of the shipped v0.10.0 source — every candidate verified by
+running the reproduction against the installed package — found four
+user-visible correctness defects, all in the neighbourhood the previous nine
+iterations hardened: config/loading robustness and the evidence read paths.
+No open issues demanded feature work (0 issues ever filed; CI green at the
+tag).
+
+### Fixed
+
+- **An undecodable byte in `audit.jsonl` no longer crashes `report`/`verify`**
+  — `AuditLog.iter_events` / `iter_corrupt` opened the trail with a strict
+  UTF-8 decode and iterated it OUTSIDE the per-line `try`, so a single byte
+  that is not valid UTF-8 (disk bit-rot, a partial write, an attacker tamper —
+  the exact threat model the v0.5.0 corrupt-line tally was built for) raised
+  `UnicodeDecodeError` from the `for raw in fh` statement and killed
+  `canaryprobe report`/`verify` with a traceback before the tally could fire —
+  a denial-of-evidence on the two commands an auditor runs. The trail is now
+  read with `errors="replace"`: a bad byte folds into the counted-corrupt path
+  ("Evidence incomplete — N corrupt audit line(s) skipped"), and a well-formed
+  line carrying one replaced byte still parses and is still counted as a trip,
+  so no trip is silently dropped. (at canaryprobe/alarm.py)
+
+- **The same fail-soft now covers `verify`'s report.md read and the signing-key
+  read** — the v0.10.0 hardening closed the read-only-dir failure mode but left
+  `cli.verify`'s `report.md` read and `lookup_signing_key` /
+  `ensure_signing_key`'s `.canaryprobe.key` read decoding strict UTF-8, so a
+  corrupted evidence copy raised `UnicodeDecodeError` out of the audit command
+  (and out of `report`, whose guard catches `OSError` only). An unreadable
+  report now exits 2 with a guided "report unreadable" message, an unreadable
+  key file is treated as no usable trust anchor so `verify` renders its guided
+  "signing key not found" exit, and `report` surfaces a guided "signing key
+  unreadable" error — never a traceback, and never a silent re-mint of the
+  corrupt root of trust. (at canaryprobe/cli.py, canaryprobe/config.py)
+
+- **`init --zone <dotless>` renders a guided error instead of a raw pydantic
+  traceback** — `_do_init` wrapped only the config LOAD path; the `--zone`
+  override went through `DeploymentConfig.from_dict` unwrapped, so a one-word
+  typo on the FIRST command an operator runs dumped a `ValidationError`
+  traceback. It now prints "invalid --zone … — use a dotted zone name" and
+  exits 2, before anything is written. (at canaryprobe/cli.py)
+
+- **An inline comment introduced by a tab no longer becomes the decoy zone** —
+  `_strip_inline_comment` matched only the space-then-hash form
+  (`value.find(" #")`), so `decoy_zone: corp.local<TAB># production zone` kept
+  the tab and the comment text as the value; the zone validator only requires a
+  dot, so it accepted the garbage zone — minting a decoy hostname trivially
+  detectable as fake under a DNS zone no real query can ever match, so DNS
+  trips silently never fired. Any whitespace-then-hash now starts the comment.
+  (at canaryprobe/config.py)
+
+### Quality
+
+- **Pin the undecodable-byte fail-soft** — the v0.6.0 corrupt-input regression
+  pinned only the valid-JSON-wrong-SHAPE dimension, which is why the byte-level
+  crashes shipped through v0.10.0. `tests/test_corrupt_input_failsoft.py` now
+  also covers an undecodable audit line (and a valid-JSON line carrying one
+  replaced byte, so a crash is never traded for a silent CLEAN), and
+  `tests/test_config_failsoft.py` pins the tab-before-comment parse and the
+  `init --zone` boundary.
+
 ## [0.10.0] - 2026-09-16
 
 A fixes-only iteration, amended against v0.9.0 (amend-canaryprobe-v0.10.0).
