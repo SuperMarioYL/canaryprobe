@@ -176,6 +176,16 @@
           "zh": "deployment.yaml 统一管理 `decoy_zone`、`dns_sensor.host/port`、`conn_sensor.host/port`、`decoys_file`、`manifest_file` 与 `audit_file`。默认本地密钥为权限 0600 的 `.canaryprobe.key`，也可设置 `CANARYPROBE_SIGNING_KEY`。保留私有密钥；报告验证需要它。",
           "en": "deployment.yaml owns `decoy_zone`, `dns_sensor.host/port`, `conn_sensor.host/port`, `decoys_file`, `manifest_file` and `audit_file`. The local key defaults to `.canaryprobe.key` with mode 0600; `CANARYPROBE_SIGNING_KEY` overrides it. Keep the key private; report verification needs it."
         }
+      },
+      {
+        "title": {
+          "zh": "证据完整性",
+          "en": "Evidence integrity"
+        },
+        "body": {
+          "zh": "`report` 与 `verify` 读取审计记录和证据文件时降级处理损坏内容：无法解码的行按损坏行计入，并在报告中标注「证据不完整」；损坏的 `report.md` 或密钥文件会给出明确提示并以退出码 2 结束，而不是抛出堆栈。",
+          "en": "When `report` and `verify` read the audit trail and evidence files they degrade instead of crashing: undecodable lines are counted as corrupt and flagged as incomplete evidence, and a corrupt `report.md` or key file exits with code 2 and a clear message rather than a traceback."
+        }
       }
     ]
   },
