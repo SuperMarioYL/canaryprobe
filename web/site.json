@@ -10,7 +10,7 @@
   },
   "meta": {
     "visual_profile": "neon-particle",
-    "content_version": "0.11.0",
+    "content_version": "0.12.0",
     "demo_source": "docs/demo-results.json"
   },
   "hero": {
@@ -23,8 +23,8 @@
       "en": "Turn a decoy touch into a checkable event."
     },
     "sub": {
-      "zh": "在本地种下主机名与假凭证诱饵，用 DNS/TCP 传感器记录触发，并生成可验证的报告。",
-      "en": "Plant local hostname and fake-credential decoys, record touches with DNS/TCP sensors and produce verifiable reports."
+      "zh": "在本地种下主机名与假凭证诱饵，用 DNS/TCP 传感器记录触发，并生成可验证的报告；缺少诱饵清单、部署密钥或可读审计记录时，报告拒绝出结论。",
+      "en": "Plant local hostname and fake-credential decoys, record touches with DNS/TCP sensors and produce verifiable reports; when the decoy manifest, deployment key or a readable audit trail is missing, the report refuses a verdict."
     },
     "href": "#quickstart",
     "cta": {
@@ -72,8 +72,8 @@
         "en": "Verify the report"
       },
       "body": {
-        "zh": "用部署密钥检查 HMAC 完整性。",
-        "en": "Check HMAC integrity with the deployment key."
+        "zh": "用部署密钥检查 HMAC 完整性；密钥缺失时报告拒绝签名，不会另造新密钥。",
+        "en": "Check HMAC integrity with the deployment key; when the key is missing the report refuses to sign instead of minting a new one."
       }
     }
   ],
@@ -173,8 +173,8 @@
           "en": "Configuration"
         },
         "body": {
-          "zh": "deployment.yaml 统一管理 `decoy_zone`、`dns_sensor.host/port`、`conn_sensor.host/port`、`decoys_file`、`manifest_file` 与 `audit_file`。默认本地密钥为权限 0600 的 `.canaryprobe.key`，也可设置 `CANARYPROBE_SIGNING_KEY`。保留私有密钥；报告验证需要它。",
-          "en": "deployment.yaml owns `decoy_zone`, `dns_sensor.host/port`, `conn_sensor.host/port`, `decoys_file`, `manifest_file` and `audit_file`. The local key defaults to `.canaryprobe.key` with mode 0600; `CANARYPROBE_SIGNING_KEY` overrides it. Keep the key private; report verification needs it."
+          "zh": "deployment.yaml 统一管理 `decoy_zone`、`dns_sensor.host/port`、`conn_sensor.host/port`、`decoys_file`、`manifest_file` 与 `audit_file`。未识别的键会被拒绝并指明键名（退出码 2），不会静默回退到默认值。默认本地密钥为权限 0600 的 `.canaryprobe.key`，也可设置 `CANARYPROBE_SIGNING_KEY`。保留私有密钥；报告验证需要它。",
+          "en": "deployment.yaml owns `decoy_zone`, `dns_sensor.host/port`, `conn_sensor.host/port`, `decoys_file`, `manifest_file` and `audit_file`. Unrecognised keys are rejected with a guided error that names them (exit 2) instead of silently falling back to a default. The local key defaults to `.canaryprobe.key` with mode 0600; `CANARYPROBE_SIGNING_KEY` overrides it. Keep the key private; report verification needs it."
         }
       },
       {
@@ -183,8 +183,8 @@
           "en": "Evidence integrity"
         },
         "body": {
-          "zh": "`report` 与 `verify` 读取审计记录和证据文件时降级处理损坏内容：无法解码的行按损坏行计入，并在报告中标注「证据不完整」；损坏的 `report.md` 或密钥文件会给出明确提示并以退出码 2 结束，而不是抛出堆栈。",
-          "en": "When `report` and `verify` read the audit trail and evidence files they degrade instead of crashing: undecodable lines are counted as corrupt and flagged as incomplete evidence, and a corrupt `report.md` or key file exits with code 2 and a clear message rather than a traceback."
+          "zh": "`report` 与 `verify` 读取审计记录和证据文件时降级处理损坏内容：无法解码的行按损坏行计入，并在报告中标注「证据不完整」；损坏的 `report.md` 或密钥文件会给出明确提示并以退出码 2 结束，而不是抛出堆栈。`report` 不会生成部署密钥，也不会在没有诱饵清单或审计记录不可读时给出 CLEAN/TRIPPED 结论——它直接拒绝并说明原因。",
+          "en": "When `report` and `verify` read the audit trail and evidence files they degrade instead of crashing: undecodable lines are counted as corrupt and flagged as incomplete evidence, and a corrupt `report.md` or key file exits with code 2 and a clear message rather than a traceback. `report` never mints the deployment key, and it refuses a CLEAN/TRIPPED verdict when the decoy manifest is absent or the audit trail is not a readable file — it exits 2 and says why."
         }
       }
     ]
@@ -244,8 +244,8 @@
   },
   "limitations": [
     {
-      "zh": "CLEAN 只表示读取的日志中没有触发，不能证明系统没有外联。TRIPPED 也不单独证明恶意或成功外泄。",
-      "en": "CLEAN means no trips were found in the read log; it does not prove absence of egress. TRIPPED alone does not prove malice or successful exfiltration."
+      "zh": "CLEAN 只表示读取的日志中没有触发，不能证明系统没有外联。TRIPPED 也不单独证明恶意或成功外泄。缺少诱饵清单或审计记录不是可读文件时，report 以退出码 2 拒绝出结论，而不是给出 CLEAN。",
+      "en": "CLEAN means no trips were found in the read log; it does not prove absence of egress. TRIPPED alone does not prove malice or successful exfiltration. When the decoy manifest is absent or the audit trail is not a readable file, report exits 2 rather than claiming CLEAN."
     },
     {
       "zh": "HMAC 使用共享密钥，属于完整性检查；持有密钥的人可生成报告。日志不是不可修改的存储。",
@@ -253,10 +253,15 @@
     }
   ],
   "footer": {
-    "tag": "0.11.0 · Python 3.12+ · Apache-2.0"
+    "tag": "0.12.0 · Python 3.12+ · Apache-2.0"
   },
-  "content_version": "v0.11.0",
+  "content_version": "v0.12.0",
   "changelog": [
+    {
+      "version": "v0.12.0",
+      "date": "2026-11-26",
+      "note": "fix: an unknown or misspelt deployment.yaml key is now rejected with a guided error that names it (exit 2) instead of silently keeping the default — a typo such as `decoy_zome:` used to plant decoys under `corp.local` (a zone the resolver never forwards, so DNS trips could never fire) and init then rewrote the file, erasing the typo. fix: `report` no longer mints a replacement signing key when .canaryprobe.key is missing — it now resolves the existing key read-only like `verify` and exits 2, so the trust anchor is never silently rotated and already-issued reports stay verifiable. fix: `report` refuses to sign a CLEAN attestation when no decoy manifest exists (an empty deployment, or a deleted manifest, used to produce a signed \"positive evidence\" report that `verify` accepted); a present-but-corrupt manifest keeps the in-band \"manifest CORRUPT / Evidence incomplete\" surfacing. fix: an audit-trail path that exists but is not a regular file (e.g. `audit_file` pointing at a directory) now fails closed with exit 2 instead of reading as zero events and signing CLEAN. quality: eleven regression tests pin every fail-closed path, each verified to fail on the v0.11.0 behaviour."
+    },
     {
       "version": "v0.11.0",
       "date": "2026-10-22",

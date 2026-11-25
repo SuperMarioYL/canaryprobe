@@ -9,7 +9,7 @@
 
 **Plant local hostname and fake-credential decoys, record touches with DNS/TCP sensors and produce verifiable reports.**
 
-`v0.11.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
+`v0.12.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
 [Website](https://canaryprobe.lei6393.com) · [Demo record](docs/demo-results.json)
 
@@ -102,14 +102,14 @@ Default binds are 127.0.0.1:5353 for DNS and 127.0.0.1:5443 for TCP. Tested traf
 
 ## Configuration
 
-deployment.yaml owns `decoy_zone`, `dns_sensor.host/port`, `conn_sensor.host/port`, `decoys_file`, `manifest_file` and `audit_file`. The local key defaults to `.canaryprobe.key` with mode 0600; `CANARYPROBE_SIGNING_KEY` overrides it. Keep the key private; report verification needs it.
+deployment.yaml owns `decoy_zone`, `dns_sensor.host/port`, `conn_sensor.host/port`, `decoys_file`, `manifest_file` and `audit_file`. The local key defaults to `.canaryprobe.key` with mode 0600; `CANARYPROBE_SIGNING_KEY` overrides it. Keep the key private; report verification needs it. Unrecognised keys are rejected with a guided error that names them (exit 2) instead of silently falling back to a default.
 
 ## Roadmap and scope
 
 The current core provides per-deployment decoys, userspace sensors, reports and signature verification. Multi-host fleets, more decoy types and tailored audit templates are future directions; the repository does not provide compliance certification.
 
-- CLEAN means no trips were found in the read log; it does not prove absence of egress. TRIPPED alone does not prove malice or successful exfiltration.
-- HMAC uses a shared key for integrity checking; anyone holding the key can generate reports. The log is not immutable storage.
+- CLEAN means no trips were found in the read log; it does not prove absence of egress. TRIPPED alone does not prove malice or successful exfiltration. Without a decoy manifest, or when the audit trail is not a readable file, report refuses to produce a verdict (exit 2).
+- HMAC uses a shared key for integrity checking; anyone holding the key can generate reports. Only init provisions the deployment key; report never mints one. The log is not immutable storage.
 
 ![Terminal recording](assets/demo.gif) · [Recording script](docs/demo.tape)
 

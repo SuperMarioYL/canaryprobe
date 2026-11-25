@@ -29,10 +29,11 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .alarm import AuditLog, TripEvent, render_alarm, render_armed
+from .alarm import AuditLog, AuditTrailUnreadableError, TripEvent, render_alarm, render_armed
 from .config import (
     DeploymentConfig,
     DeploymentConfigCorruptError,
+    DeploymentConfigUnknownKeysError,
     load_or_default,
     lookup_signing_key,
 )
@@ -45,7 +46,7 @@ from .decoy import (
     load_manifest,
     write_decoys,
 )
-from .report import verify_report, write_report
+from .report import ReportPreconditionError, verify_report, write_report
 from .sensor_conn import ConnSensor
 from .sensor_dns import DnsSensor
 
@@ -79,6 +80,20 @@ def _main(
     """CanaryProbe — plant decoys, arm sensors, prove no covert egress."""
 
 
+def _render_unknown_config_keys(exc: Exception) -> None:
+    """Render the guided unknown-key message (distinct from the corrupt path).
+
+    A typo is not a corrupt file: the remedy is to correct the key, not to
+    re-initialise, so this never tells the operator to run ``init`` (whose
+    fallback would rewrite the file from defaults and drop their settings).
+    """
+
+    _err.print(
+        "[red]deployment.yaml has unknown key(s) — fix the spelling.[/red]"
+    )
+    _err.print(f"[dim]{exc}[/dim]")
+
+
 def _load_cfg(directory: Path) -> DeploymentConfig:
     """Load the deployment config, exiting cleanly on a corrupt deployment.yaml.
 
@@ -89,10 +104,14 @@ def _load_cfg(directory: Path) -> DeploymentConfig:
     ``verify`` crashed before rendering evidence (denial-of-evidence). It now
     surfaces a guided "deployment.yaml corrupt — re-init" message and exits 2,
     mirroring the ``DecoysCorruptError`` path the sibling runtime files use.
+    Unknown keys get their own message: the file is intact, the key is wrong.
     """
 
     try:
         return load_or_default(Path(directory))
+    except DeploymentConfigUnknownKeysError as exc:
+        _render_unknown_config_keys(exc)
+        raise typer.Exit(code=2)
     except DeploymentConfigCorruptError as exc:
         _err.print(
             "[red]deployment.yaml corrupt/unparseable — re-init with "
@@ -115,6 +134,13 @@ def _do_init(
 ) -> None:
     try:
         cfg = load_or_default(dir_)
+    except DeploymentConfigUnknownKeysError as exc:
+        # An unknown key is a typo in a file the operator must keep, not a
+        # corrupt file: refuse instead of taking the fallback below, which
+        # rewrites deployment.yaml from defaults and silently drops their zone
+        # and binds (the erase this check exists to prevent).
+        _render_unknown_config_keys(exc)
+        raise typer.Exit(code=2)
     except DeploymentConfigCorruptError:
         # ``init`` IS the recovery command ("re-init with canaryprobe init"),
         # so a present-but-corrupt deployment.yaml must not crash it: fall back
@@ -331,27 +357,22 @@ def report(
     cfg = _load_cfg(Path(directory))
     try:
         path, result = write_report(cfg, path=output)
+    except (ReportPreconditionError, AuditTrailUnreadableError) as exc:
+        # The report is an attestation, so a missing trust anchor, a missing
+        # decoy set, or an unreadable audit trail is a refusal — never a
+        # forged/fabricated verdict. Guided exit 2, nothing written.
+        _err.print(f"[red]cannot produce the evidence report[/red] — {exc}")
+        raise typer.Exit(code=2)
     except OSError as exc:
-        # Building the report can mint a signing key or write report.md — an
-        # unwritable (e.g. read-only-mounted) deployment dir must surface a
-        # guided error, not a raw PermissionError traceback (denial of
-        # evidence: the evidence command must always complete in-band).
+        # Building the report writes report.md — an unwritable (e.g.
+        # read-only-mounted) deployment dir must surface a guided error, not a
+        # raw PermissionError traceback (denial of evidence: the evidence
+        # command must always complete in-band).
         _err.print(f"[red]cannot write the report[/red] — {exc}")
         _err.print(
             "The deployment directory may be read-only, so the signing key or "
             "report could not be created there. Point [bold]--dir[/bold] at a "
             "writable deployment directory."
-        )
-        raise typer.Exit(code=2)
-    except UnicodeDecodeError as exc:
-        # Signing reads .canaryprobe.key as text; an undecodable key file (a
-        # corrupt root of trust) must surface a guided error rather than a raw
-        # decode traceback — and must NOT be silently re-minted, which would
-        # invalidate every signature the deployment already produced.
-        _err.print(f"[red]signing key unreadable[/red] — {exc}")
-        _err.print(
-            "Restore [bold].canaryprobe.key[/bold] in the deployment directory "
-            "or set [bold]CANARYPROBE_SIGNING_KEY[/bold]."
         )
         raise typer.Exit(code=2)
 

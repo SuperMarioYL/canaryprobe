@@ -104,6 +104,18 @@ class TripEvent(BaseModel):
         )
 
 
+class AuditTrailUnreadableError(RuntimeError):
+    """Raised when the audit trail path exists but is not a regular file.
+
+    ``iter_events``/``iter_corrupt`` return early for a path that is not a
+    regular file, which is right for an ABSENT trail (a fresh deployment has no
+    events yet) but wrong for a directory, FIFO, device node or broken link: the
+    trail is unreadable, not empty, and reading it as empty lets ``report`` sign
+    a CLEAN verdict over evidence that was never consulted. ``audit_file``
+    pointing at a directory is one trailing slash away.
+    """
+
+
 class AuditLog:
     """Append-only writer/reader for ``audit.jsonl``.
 
@@ -133,6 +145,7 @@ class AuditLog:
 
     def iter_events(self) -> Iterator[TripEvent]:
         if not self.path.is_file():
+            self._reject_unreadable_path()
             return
         # errors="replace" so an undecodable byte in the trail (bit-rot / partial
         # write / tamper) can never raise UnicodeDecodeError out of this lazy
@@ -155,6 +168,22 @@ class AuditLog:
                     # path so the corrupt-line tally fires instead of a crash.
                     continue
 
+    def _reject_unreadable_path(self) -> None:
+        """Raise when the trail path exists but is not a regular file.
+
+        Only a path that does not exist at all means "no trail yet"; anything
+        else that fails ``is_file()`` (directory, FIFO, device node, symlink to
+        one) is an unreadable trail, not an empty one. Reading it as empty would
+        let ``report`` sign CLEAN over evidence it never consulted.
+        """
+
+        if self.path.exists():
+            raise AuditTrailUnreadableError(
+                f"audit trail at {self.path} is not a regular file — fix "
+                "audit_file in deployment.yaml; refusing to report zero events "
+                "from an unreadable trail"
+            )
+
     def count(self) -> int:
         return sum(1 for _ in self.iter_events())
 
@@ -172,6 +201,7 @@ class AuditLog:
         """
 
         if not self.path.is_file():
+            self._reject_unreadable_path()
             return
         with open(self.path, "r", encoding="utf-8", errors="replace") as fh:
             for raw in fh:
@@ -264,6 +294,7 @@ __all__ = [
     "SensorKind",
     "TripEvent",
     "AuditLog",
+    "AuditTrailUnreadableError",
     "render_alarm",
     "render_armed",
     "describe_decoy_for_alarm",

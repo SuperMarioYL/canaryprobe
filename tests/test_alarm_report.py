@@ -9,10 +9,21 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
-from canaryprobe.alarm import AuditLog, SensorKind, TripEvent
-from canaryprobe.config import DeploymentConfig
+import pytest
+from typer.testing import CliRunner
+
+from canaryprobe.alarm import AuditLog, AuditTrailUnreadableError, SensorKind, TripEvent
+from canaryprobe.cli import app
+from canaryprobe.config import DeploymentConfig, ensure_signing_key, load_or_default
 from canaryprobe.decoy import generate_decoys, load_manifest, write_decoys
-from canaryprobe.report import build_report, verify_report, write_report
+from canaryprobe.report import (
+    ReportPreconditionError,
+    build_report,
+    verify_report,
+    write_report,
+)
+
+runner = CliRunner()
 
 
 # ---------------------------------------------------------------------------
@@ -349,3 +360,96 @@ def test_report_corrupt_manifest_is_surfaced_not_crash(tmp_path):
     assert "manifest CORRUPT" in result.markdown
     assert "Evidence incomplete" in result.markdown
     assert verify_report(result.markdown, cfg.signing_key()) is True
+
+
+# ---------------------------------------------------------------------------
+# v0.12.0 — report preconditions: no manifest, nothing to attest
+# ---------------------------------------------------------------------------
+
+
+def test_report_refuses_clean_attestation_without_manifest(tmp_path):
+    """Regression for fix-report-attests-clean-without-manifest.
+
+    In a directory that never ran ``init`` the shipped v0.11.0 ``report``
+    exited 0 with a signed report asserting "positive evidence that the
+    monitored coding agent did not probe a host" — although no decoy was ever
+    planted and no sensor armed — and ``verify`` then said VERIFIED. With the
+    fix the build refuses: a CLEAN attestation needs a planted decoy set.
+    """
+    cfg = DeploymentConfig.default(tmp_path)
+    # a trust anchor exists, but no decoy set was ever planted
+    ensure_signing_key(tmp_path)
+
+    with pytest.raises(ReportPreconditionError) as exc_info:
+        build_report(cfg)
+    assert "manifest" in str(exc_info.value).lower()
+
+
+def test_cli_report_without_manifest_exits_2_and_writes_nothing(tmp_path):
+    """The CLI renders the missing-manifest precondition as a guided exit 2 and
+    leaves no report.md behind (no signed CLEAN from nothing)."""
+    ensure_signing_key(tmp_path)  # isolate the manifest precondition
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "manifest" in out.lower()
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_report_after_manifest_deletion_refuses_not_clean(tmp_path):
+    """Deleting decoys.manifest.json used to buy a CLEAN bill: the report simply
+    omitted the "Decoys planted" row. With the fix the next report refuses and
+    the previously issued report.md is left byte-identical."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    _seed_events(cfg, n=1)
+    path, _ = write_report(cfg)
+    previous = path.read_text(encoding="utf-8")
+
+    cfg.manifest_path.unlink()
+
+    with pytest.raises(ReportPreconditionError):
+        build_report(cfg)
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+    assert result.exit_code == 2
+    assert path.read_text(encoding="utf-8") == previous
+
+
+def test_report_refuses_clean_when_audit_path_is_a_directory(tmp_path):
+    """Regression for fix-audit-trail-non-file-fails-open.
+
+    ``AuditLog.iter_events``/``iter_corrupt`` returned early for any path that
+    is not a regular file, so ``audit_file`` pointing at a directory produced a
+    signed CLEAN report (Trip events 0, exit 0) while ``watch`` was printing
+    AUDIT WRITE FAILED for every real trip. With the fix the unreadable trail is
+    a typed error and the CLI exits 2 without signing a verdict.
+    """
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    cfg.audit_file = "auditdir"
+    cfg.save()
+    (tmp_path / "auditdir").mkdir()
+
+    with pytest.raises(AuditTrailUnreadableError):
+        build_report(load_or_default(tmp_path))
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "audit" in out.lower()
+    assert "CLEAN" not in out
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_absent_audit_trail_still_reads_clean(tmp_path):
+    """Control: an ABSENT trail is a fresh-deployment CLEAN (not the unreadable
+    error) — the fix must not turn "nothing recorded yet" into a failure."""
+    cfg = DeploymentConfig.default(tmp_path)
+    write_decoys(cfg, generate_decoys("corp.local"))
+    assert not cfg.audit_path.exists()
+    result = build_report(cfg)
+    assert result.verdict == "CLEAN"
+    assert result.event_count == 0

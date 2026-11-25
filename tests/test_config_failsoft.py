@@ -35,6 +35,7 @@ from canaryprobe.config import (
     DEFAULT_CONN_BIND_PORT,
     DeploymentConfig,
     DeploymentConfigCorruptError,
+    DeploymentConfigUnknownKeysError,
     _parse_yaml,
     _strip_inline_comment,
     load_or_default,
@@ -336,3 +337,83 @@ def test_init_cli_valid_zone_still_writes_config(tmp_path):
     assert result.exit_code == 0
     assert load_or_default(tmp_path).decoy_zone == "example.internal"
 
+
+
+# ---------------------------------------------------------------------------
+# v0.12.0 — an unknown/typo'd key must be a loud error, not a silent default
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_config_key_is_rejected_not_silently_defaulted(tmp_path):
+    """Regression for fix-config-unknown-key-silent-default.
+
+    ``from_dict`` copied only the six documented keys into the model, so a
+    typo'd key never reached pydantic and the command exited 0 with the DEFAULT
+    for that setting. For ``decoy_zome: acme.internal`` that minted decoys under
+    ``corp.local`` (a zone the operator's resolver never forwards), so DNS trips
+    could never fire — and ``init`` then rewrote the file, erasing the typo.
+    With the fix the load names the offending key instead of defaulting.
+    """
+    (tmp_path / "deployment.yaml").write_text(
+        "decoy_zome: acme.internal\n", encoding="utf-8"
+    )
+    with pytest.raises(DeploymentConfigUnknownKeysError) as exc_info:
+        load_or_default(tmp_path)
+    assert "decoy_zome" in str(exc_info.value)
+    # it is a config-shape error, so it still classifies as a corrupt-config load
+    assert isinstance(exc_info.value, DeploymentConfigCorruptError)
+
+
+def test_unknown_sensor_key_is_reported_with_block_prefix(tmp_path):
+    """A misspelt key inside a sensor block is named with its block prefix, so
+    the operator can find the line (`dns_sensor.prot: 5353` used to be dropped
+    and the documented port silently used)."""
+    (tmp_path / "deployment.yaml").write_text(
+        "dns_sensor:\n  host: 10.0.0.5\n  prot: 5353\n", encoding="utf-8"
+    )
+    with pytest.raises(DeploymentConfigUnknownKeysError) as exc_info:
+        load_or_default(tmp_path)
+    assert "dns_sensor.prot" in str(exc_info.value)
+
+
+def test_init_unknown_config_key_refuses_and_leaves_file_untouched(tmp_path):
+    """``init`` must not take its corrupt-config fallback for an unknown key:
+    that fallback rewrites deployment.yaml from defaults, which is the silent
+    erase being fixed. It refuses (exit 2) and writes nothing."""
+    path = tmp_path / "deployment.yaml"
+    original = "decoy_zome: acme.internal\n"
+    path.write_text(original, encoding="utf-8")
+
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
+
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "unknown key" in out.lower()
+    assert "decoy_zome" in out
+    assert path.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "decoys.json").exists()
+
+
+def test_fully_documented_config_still_loads_and_round_trips(tmp_path):
+    """Guard: closing the key set must not reject a config that uses every
+    documented key, including both sensor blocks."""
+    (tmp_path / "deployment.yaml").write_text(
+        "decoy_zone: acme.internal\n"
+        "dns_sensor:\n"
+        "  host: 10.0.0.5\n"
+        "  port: 15353\n"
+        "conn_sensor:\n"
+        "  host: 10.0.0.6\n"
+        "  port: 15443\n"
+        "decoys_file: decoys.json\n"
+        "manifest_file: decoys.manifest.json\n"
+        "audit_file: audit.jsonl\n",
+        encoding="utf-8",
+    )
+    cfg = load_or_default(tmp_path)
+    assert cfg.decoy_zone == "acme.internal"
+    assert (cfg.dns_sensor.host, cfg.dns_sensor.port) == ("10.0.0.5", 15353)
+    assert (cfg.conn_sensor.host, cfg.conn_sensor.port) == ("10.0.0.6", 15443)
+    cfg.save()
+    reloaded = load_or_default(tmp_path)
+    assert reloaded.decoy_zone == "acme.internal"

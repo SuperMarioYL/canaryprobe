@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-26
+
+A fixes-only iteration, amended against v0.9.0 (amend-canaryprobe-v0.12.0) and
+shipped on the v0.11.0 code base. A bug-hunt read of the shipped v0.11.0 source
+— every candidate reproduced against the installed CLI — found four ways the
+tool KEPT GOING AND SAID SUCCESS with the wrong answer: a config typo that
+silently became a default, a report that minted a replacement signing key, a
+CLEAN attestation for a deployment with no decoys, and an unreadable audit
+trail read as zero events. No open issues demanded feature work (0 issues ever
+filed).
+
+### Fixed
+
+- **An unknown or misspelt `deployment.yaml` key is an error, not a silent
+  default** — the hand-rolled parser accepted any `key: value`, but
+  `DeploymentConfig.from_dict` copied only the six documented keys into the
+  model and dropped the rest, so `decoy_zome: acme.internal` loaded at exit 0
+  and planted decoys under the default `corp.local` — a zone the operator's
+  resolver never forwards, so DNS trips could never fire. Worse, `init` then
+  rewrote the file, erasing the typo with no trace. Unknown top-level keys and
+  unknown keys inside `dns_sensor`/`conn_sensor` now raise a guided
+  "unknown key(s) — fix the spelling" error (exit 2) that names each offending
+  key, and `init` refuses rather than taking its corrupt-config fallback (which
+  would overwrite the file). A genuinely corrupt/unparseable file keeps the
+  existing re-init recovery. (at canaryprobe/config.py, canaryprobe/cli.py)
+
+- **`report` no longer mints a replacement signing key** — `build_report` went
+  through `config.signing_key()` → `ensure_signing_key`, so with
+  `.canaryprobe.key` missing it minted a NEW key, exited 0, signed the fresh
+  report with it, and made every already-issued report verify as TAMPERED: a
+  silent rotation of the evidence chain's root of trust. `report` now resolves
+  the existing key read-only (`lookup_signing_key`, as `verify` has since
+  v0.10.0) and exits 2 with "signing key not found or unreadable — restore
+  .canaryprobe.key or set CANARYPROBE_SIGNING_KEY". `init` remains the only
+  command that provisions a key. (at canaryprobe/report.py, canaryprobe/cli.py)
+
+- **`report` refuses to attest CLEAN without a planted decoy set** — an absent
+  `decoys.manifest.json` was not distinguished from a corrupt one, so in a
+  directory that never ran `init` the command exited 0 with a signed report
+  asserting "positive evidence that the monitored coding agent did not probe a
+  host it had no business knowing about" while nothing was planted or armed —
+  and `verify` then said VERIFIED. Deleting the manifest from a real deployment
+  reached the same state. The report now refuses (exit 2, no report written)
+  when the manifest is absent; a PRESENT-but-corrupt manifest keeps the v0.5.0
+  in-band "manifest CORRUPT / Evidence incomplete" surfacing. (at
+  canaryprobe/report.py, canaryprobe/cli.py)
+
+- **An audit-trail path that exists but is not a regular file fails closed** —
+  `AuditLog.iter_events`/`iter_corrupt` returned early for any path that failed
+  `is_file()`, so `audit_file` pointing at a directory produced a signed CLEAN
+  report ("Trip events 0", exit 0) while `watch` printed AUDIT WRITE FAILED for
+  every real trip on that deployment. The readers now raise a typed
+  `AuditTrailUnreadableError`, and `report` exits 2 with "audit trail is not a
+  regular file — fix audit_file in deployment.yaml" instead of signing a
+  verdict over evidence it never read. An ABSENT trail is still a legitimate
+  fresh-deployment CLEAN. (at canaryprobe/alarm.py, canaryprobe/cli.py)
+
+### Quality
+
+- **Every fail-closed path is pinned by a regression test** — eleven tests were
+  added across `tests/test_config_failsoft.py`,
+  `tests/test_alarm_report.py` and `tests/test_signing_key_failsoft.py`, each
+  verified to fail on the shipped v0.11.0 behaviour and pass with the fix
+  (unknown key reported with its block prefix, `init` refusing an unknown key
+  without touching the file, `report` not minting a key, report refusing without
+  a manifest / with a deleted manifest, an unreadable trail refusing, plus
+  controls that a fully documented config and an absent trail still work).
+
 ## [0.11.0] - 2026-10-22
 
 A fixes-only iteration, amended against v0.10.0 (amend-canaryprobe-v0.11.0).

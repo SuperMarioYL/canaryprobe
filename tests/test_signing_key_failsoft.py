@@ -149,3 +149,48 @@ def test_report_surfaces_error_when_report_unwritable(tmp_path):
 
     assert result.exit_code == 2
     assert not isinstance(result.exception, PermissionError)
+
+
+# ---------------------------------------------------------------------------
+# v0.12.0 — `report` must not mint a replacement trust anchor either
+# ---------------------------------------------------------------------------
+
+
+def test_report_does_not_mint_signing_key(tmp_path):
+    """Regression for fix-report-mints-divergent-signing-key.
+
+    ``verify`` was fixed in v0.10.0 to never mint, but ``report`` still reached
+    ``config.signing_key()`` -> ``ensure_signing_key``. At v0.11.0 deleting
+    ``.canaryprobe.key`` and running ``report`` minted a DIFFERENT key, exited 0,
+    and made every already-issued report verify as TAMPERED — a silent rotation
+    of the evidence chain's root of trust. Now report refuses (exit 2) and
+    creates no key and no report.
+    """
+    _deploy(tmp_path)
+    key_file = tmp_path / ".canaryprobe.key"
+    key_file.unlink()
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+
+    out = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "signing key" in out.lower()
+    assert not key_file.exists()
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_report_uses_existing_key_not_a_fresh_one(tmp_path):
+    """Guard: with the deployment key present, report signs with THAT key — the
+    key file is byte-identical afterwards and the report verifies under it."""
+    from canaryprobe.report import verify_report
+
+    _deploy(tmp_path)
+    key_file = tmp_path / ".canaryprobe.key"
+    before = key_file.read_text(encoding="utf-8").strip()
+
+    result = runner.invoke(app, ["report", "--dir", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert key_file.read_text(encoding="utf-8").strip() == before
+    markdown = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert verify_report(markdown, before) is True

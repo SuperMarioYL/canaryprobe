@@ -9,7 +9,7 @@
 
 **在本地种下主机名与假凭证诱饵，用 DNS/TCP 传感器记录触发，并生成可验证的报告。**
 
-`v0.11.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
+`v0.12.0` · `Python 3.12+` · [Apache-2.0](LICENSE)
 
 [Website](https://canaryprobe.lei6393.com) · [Demo record](docs/demo-results.json)
 
@@ -102,14 +102,14 @@ Reply: [127.0.0.1:63137] (udp) / 'ci-runner-07-91.corp.local.' (A) / RRs: A
 
 ## 配置
 
-deployment.yaml 统一管理 `decoy_zone`、`dns_sensor.host/port`、`conn_sensor.host/port`、`decoys_file`、`manifest_file` 与 `audit_file`。默认本地密钥为权限 0600 的 `.canaryprobe.key`，也可设置 `CANARYPROBE_SIGNING_KEY`。保留私有密钥；报告验证需要它。
+deployment.yaml 统一管理 `decoy_zone`、`dns_sensor.host/port`、`conn_sensor.host/port`、`decoys_file`、`manifest_file` 与 `audit_file`。默认本地密钥为权限 0600 的 `.canaryprobe.key`，也可设置 `CANARYPROBE_SIGNING_KEY`。保留私有密钥；报告验证需要它。未识别的键会被拒绝并指明键名（退出码 2），不会静默回退到默认值。
 
 ## 路线图与范围
 
 当前核心为单部署诱饵、用户态传感器、报告与签名验证。多主机编队、更多诱饵类型与特定审计模板属于未来方向；仓库不提供已验收的合规认证。
 
-- CLEAN 只表示读取的日志中没有触发，不能证明系统没有外联。TRIPPED 也不单独证明恶意或成功外泄。
-- HMAC 使用共享密钥，属于完整性检查；持有密钥的人可生成报告。日志不是不可修改的存储。
+- CLEAN 只表示读取的日志中没有触发，不能证明系统没有外联。TRIPPED 也不单独证明恶意或成功外泄。没有诱饵清单、或审计记录不是可读文件时，report 不出结论，而是以退出码 2 拒绝。
+- HMAC 使用共享密钥，属于完整性检查；持有密钥的人可生成报告。只有 init 会生成部署密钥，report 不会另造密钥。日志不是不可修改的存储。
 
 ![Terminal recording](assets/demo.gif) · [Recording script](docs/demo.tape)
 

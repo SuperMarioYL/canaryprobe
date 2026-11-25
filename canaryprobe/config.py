@@ -184,6 +184,7 @@ class DeploymentConfig(BaseModel):
         cls, data: dict[str, Any], *, base_dir: str | os.PathLike[str] | None = None
     ) -> "DeploymentConfig":
         data = dict(data or {})
+        _reject_unknown_keys(data)
         kwargs: dict[str, Any] = {}
         if "decoy_zone" in data:
             kwargs["decoy_zone"] = data["decoy_zone"]
@@ -238,6 +239,54 @@ class DeploymentConfigCorruptError(RuntimeError):
     "deployment.yaml corrupt — re-init with canaryprobe init" (exit 2) instead of
     a bare traceback — mirroring :class:`canaryprobe.decoy.DecoysCorruptError`.
     """
+
+
+class DeploymentConfigUnknownKeysError(DeploymentConfigCorruptError):
+    """Raised by :func:`load_or_default` when ``deployment.yaml`` carries keys
+    the documented schema does not define.
+
+    Kept distinct from the corrupt/unparseable case because the remedy differs:
+    a corrupt file is repaired by re-initialising, while an unknown key is a
+    typo in a file the operator must keep. Treating it as corrupt would let
+    ``init`` take its fallback and REWRITE the file from defaults — the silent
+    erase this error exists to prevent. Before this check the parser accepted
+    any ``key: value`` and ``from_dict`` dropped the ones it did not know, so
+    ``decoy_zome: acme.internal`` loaded at exit 0 and planted decoys under the
+    default ``corp.local``: a zone the operator's resolver never forwards, so
+    DNS trips silently never fired.
+    """
+
+
+def _reject_unknown_keys(data: dict[str, Any]) -> None:
+    """Fail closed on keys the documented config schema does not define.
+
+    Top-level keys are checked against the ``DeploymentConfig`` fields, and the
+    ``dns_sensor``/``conn_sensor`` blocks against ``SensorBind``'s fields, so
+    the known set stays derived from the models instead of a second list. A
+    typo is named with its block prefix (``dns_sensor.prot``) so the operator
+    can find the line.
+    """
+
+    documented = set(DeploymentConfig.model_fields) - {"base_dir"}
+    unknown = [key for key in data if key not in documented]
+    for block in ("dns_sensor", "conn_sensor"):
+        provided = data.get(block)
+        if isinstance(provided, dict):
+            unknown += [
+                f"{block}.{key}"
+                for key in provided
+                if key not in SensorBind.model_fields
+            ]
+    if unknown:
+        raise DeploymentConfigUnknownKeysError(
+            "unknown key(s) in deployment.yaml: "
+            + ", ".join(sorted(unknown))
+            + " — documented keys are "
+            + ", ".join(sorted(documented))
+            + " (dns_sensor/conn_sensor take host, port). Fix the spelling: a "
+            "typo silently keeps the default, so the deployment would plant "
+            "decoys under the wrong zone and never trip."
+        )
 
 
 def load_or_default(
@@ -486,6 +535,7 @@ __all__ = [
     "SensorBind",
     "DeploymentConfig",
     "DeploymentConfigCorruptError",
+    "DeploymentConfigUnknownKeysError",
     "load_or_default",
     "ensure_signing_key",
     "lookup_signing_key",

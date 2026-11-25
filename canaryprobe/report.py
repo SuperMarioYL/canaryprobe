@@ -26,10 +26,21 @@ from typing import Iterable
 from pydantic import BaseModel, Field
 
 from .alarm import AuditLog, TripEvent
-from .config import DeploymentConfig
+from .config import DeploymentConfig, lookup_signing_key
 from .decoy import DecoyManifest, load_manifest
 
 _SIG_MARKER = "signature: "
+
+
+class ReportPreconditionError(RuntimeError):
+    """Raised when an evidence report cannot be honestly produced.
+
+    A report is an attestation, so it needs its preconditions: the deployment's
+    existing signing key (never a freshly minted one — that silently rotates the
+    trust anchor and invalidates already-issued reports) and a planted decoy set
+    (without a manifest there is nothing a CLEAN verdict could attest about).
+    The CLI renders this as a guided exit 2 instead of printing a verdict.
+    """
 
 
 class ReportResult(BaseModel):
@@ -73,16 +84,38 @@ def build_report(
     """
 
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    # Resolve the deployment's EXISTING key. Never mint one here: report is an
+    # auditor command (like verify), and a freshly minted key would silently
+    # rotate the root of trust and make every already-issued report verify as
+    # TAMPERED. `init` remains the only command that provisions a key.
+    key = lookup_signing_key(config.base_dir)
+    if key is None:
+        raise ReportPreconditionError(
+            "signing key not found or unreadable — restore .canaryprobe.key in "
+            "the deployment directory or set CANARYPROBE_SIGNING_KEY; the "
+            "report cannot be signed without the deployment's trust anchor"
+        )
+
     audit = AuditLog(config.audit_path)
     events = sorted(audit.read(), key=lambda e: e.ts)
     corrupt_lines = audit.count_corrupt()
 
     manifest = load_manifest(config)
+    if manifest is None and not config.manifest_path.is_file():
+        # An ABSENT manifest means no decoy set was ever planted (or it was
+        # removed). A CLEAN verdict would then attest to a deployment that never
+        # armed, so refuse instead of signing. A PRESENT-but-corrupt manifest
+        # keeps the v0.5.0 in-band CORRUPT surfacing below.
+        raise ReportPreconditionError(
+            f"no signed decoy manifest at {config.manifest_path} — run "
+            "`canaryprobe init`; a CLEAN verdict cannot be attested without a "
+            "planted decoy set"
+        )
     manifest_verified: bool | None = None
     manifest_corrupt = False
     if manifest is not None:
-        manifest_verified = manifest.verify(config.signing_key())
-    elif config.manifest_path.is_file():
+        manifest_verified = manifest.verify(key)
+    else:
         # File exists but load_manifest returned None -> it is corrupt/unparseable,
         # not absent. Surface it so a tampered manifest can't hide as "no manifest".
         manifest_corrupt = True
@@ -99,7 +132,7 @@ def build_report(
     )
 
     body = _render_body(config, events, result, manifest)
-    signature = _sign(config.signing_key(), body)
+    signature = _sign(key, body)
     result.signature = signature
     # The signature is over the evidence BODY only.  The generation timestamp is
     # volatile report-metadata, so it is rendered AFTER the signature line as an
@@ -266,6 +299,7 @@ def summarize_events(events: Iterable[TripEvent]) -> str:
 
 
 __all__ = [
+    "ReportPreconditionError",
     "ReportResult",
     "build_report",
     "write_report",
